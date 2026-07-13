@@ -1,0 +1,31 @@
+{
+    "countries": {
+        "France": {
+            "documents": ["RBIS", "AVIS"]
+        },
+        "Germany": {
+            "documents": ["VAT", "HRB"]
+        },
+        "USA": {
+            "documents": ["VAT", "RBIS", "AVIS"]
+        },
+        "India": {
+            "documents": ["GST", "PAN"]
+        }
+    },
+    "operations": [
+        "Create",
+        "Request Check",
+        "Existence Check"
+    ],
+    "process": [
+        { "id": "extract",   "title": "Extracting Information" },
+        { "id": "validate",  "title": "Validating Details" },
+        { "id": "dedupe",    "title": "Checking for Duplicates" },
+        { "id": "bank",      "title": "Checking Bank Details" },
+        { "id": "sanctions", "title": "Running Sanctions Screening" },
+        { "id": "tax",       "title": "Verifying Tax Registration" },
+        { "id": "approval",  "title": "Awaiting Internal Approval" },
+        { "id": "vendor",    "title": "Creating Vendor" }
+    ]
+}
