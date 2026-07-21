@@ -1,13 +1,13 @@
 import unittest
 
-from services.workflow_service import WorkflowService, WorkflowError
-from services.config_service import ConfigService
+from flows.vendor_create.document_collector import WorkflowService, WorkflowError
+from config_data.country_config import ConfigService
 from models.workflow import WorkflowPhase
 
 
 class WorkflowServiceDocumentFlowTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.config = ConfigService("config/workflow.json")
+        self.config = ConfigService("config_data/countries.json")
         self.service = WorkflowService(self.config)
 
     def test_create_operation_collects_documents_one_by_one(self) -> None:

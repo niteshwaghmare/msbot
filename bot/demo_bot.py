@@ -6,10 +6,10 @@ and handing the router to the activity handler it extends.
 
 from __future__ import annotations
 
-from bot.activity_handler import DemoActivityHandler
-from bot.card_router import CardRouter
-from bot.workflow_controller import WorkflowController
-from services.config_service import ConfigService
+from bot.main_bot import DemoActivityHandler
+from flows.router import CardRouter
+from flows.vendor_create.create_flow import WorkflowController
+from config_data.country_config import ConfigService
 
 
 class DemoBot(DemoActivityHandler):
@@ -17,7 +17,7 @@ class DemoBot(DemoActivityHandler):
 
     def __init__(
         self,
-        config_path: str = "config/workflow.json",
+        config_path: str = "config_data/countries.json",
         app_id: str = "",
     ) -> None:
         """Construct the bot and all its collaborators.

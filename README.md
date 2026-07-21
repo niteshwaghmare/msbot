@@ -61,12 +61,18 @@ http://localhost:3978/api/messages
 
 ## Project structure
 
-- app.py: Bot entry point
-- bot/: Bot logic, cards, and handlers
-- config/: Workflow configuration
-- models/: Workflow and progress models
-- services/: Workflow and progress services
-- simulator/: Simulated processing logic
+- app.py: aiohttp entry point, bot adapter setup, and routes
+- config.py: app settings for adapter credentials, host, and port
+- bot/: Bot ActivityHandler and composition root
+- flows/: Conversation routing and vendor operation flows
+- config_data/: JSON-backed country/document configuration provider
+- models/: Vendor, document, country, workflow, and progress models
+- cards/: Adaptive Card builders and templates
+- services/: External-service integration layer placeholders plus progress service
+- validators/: Validation extension points
+- processors/: Document and vendor processing pipeline modules
+- state/: Conversation and vendor state extension points
+- utils/: Shared helpers
 - tests/: Workflow unit tests
 
 ## Notes
