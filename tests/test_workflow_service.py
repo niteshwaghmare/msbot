@@ -19,17 +19,17 @@ class WorkflowServiceDocumentFlowTests(unittest.TestCase):
         state = self.service.get_state()
 
         self.assertEqual(state.phase, WorkflowPhase.AWAITING_DOCUMENT)
-        self.assertEqual(self.service.get_current_document(), "RBIS")
-
-        self.service.submit_document("/tmp/rbis.pdf")
-        state = self.service.get_state()
-        self.assertEqual(state.phase, WorkflowPhase.AWAITING_DOCUMENT)
         self.assertEqual(self.service.get_current_document(), "AVIS")
 
         self.service.submit_document("/tmp/avis.pdf")
         state = self.service.get_state()
+        self.assertEqual(state.phase, WorkflowPhase.AWAITING_DOCUMENT)
+        self.assertEqual(self.service.get_current_document(), "RIB")
+
+        self.service.submit_document("/tmp/rib.pdf")
+        state = self.service.get_state()
         self.assertEqual(state.phase, WorkflowPhase.PROCESSING)
-        self.assertEqual(state.collected_documents, ["/tmp/rbis.pdf", "/tmp/avis.pdf"])
+        self.assertEqual(state.collected_documents, ["/tmp/avis.pdf", "/tmp/rib.pdf"])
 
     def test_submit_document_requires_active_document_step(self) -> None:
         self.service.start_workflow()
@@ -37,7 +37,7 @@ class WorkflowServiceDocumentFlowTests(unittest.TestCase):
         self.service.select_operation("Create")
 
         with self.assertRaises(WorkflowError):
-            self.service.submit_document("/tmp/rbis.pdf")
+            self.service.submit_document("/tmp/avis.pdf")
 
 
 if __name__ == "__main__":

@@ -1,9 +1,9 @@
-"""Owns all transitions of the live simulation progress state.
+"""Owns all transitions of the live workflow progress state.
 
 ProgressService is the single component permitted to mutate a
 ProgressState. It builds the state from configured process steps and
 advances it through the pending -> running -> completed lifecycle.
-FakeProcessor drives it; ProgressCard reads the resulting snapshot.
+DocumentProcessor drives it; ProgressCard reads the resulting snapshot.
 """
 
 from __future__ import annotations
@@ -13,10 +13,10 @@ from models.progress import ProgressState, ProgressStep, StepStatus
 
 
 class ProgressService:
-    """Builds and advances the simulated process state.
+    """Builds and advances the workflow process state.
 
     The service wraps a single ProgressState and exposes the minimal
-    set of transitions needed to run the simulation. It performs no I/O
+    set of transitions needed to run the workflow. It performs no I/O
     and no waiting, keeping it deterministic and unit-testable.
     """
 
