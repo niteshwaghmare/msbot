@@ -13,6 +13,10 @@ from botbuilder.core import ActivityHandler, TurnContext
 from botbuilder.schema import ChannelAccount
 
 from flows.router import CardRouter
+from utils.logging import activity_log_details, get_logger
+
+
+LOGGER = get_logger(__name__)
 
 
 class DemoActivityHandler(ActivityHandler):
@@ -42,6 +46,13 @@ class DemoActivityHandler(ActivityHandler):
             turn_context: The current turn context.
         """
         payload: dict[str, Any] | None = turn_context.activity.value
+        LOGGER.info(
+            "Routing message activity has_payload=%s has_text=%s attachment_count=%s",
+            payload is not None,
+            bool((turn_context.activity.text or "").strip()),
+            len(turn_context.activity.attachments or []),
+            extra=activity_log_details(turn_context),
+        )
         await self._router.route(turn_context, payload)
 
     async def on_members_added_activity(

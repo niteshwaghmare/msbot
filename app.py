@@ -5,9 +5,6 @@ wires up the adapter with error handling, and dispatches incoming
 activities to DemoBot.
 """
 
-import sys
-import traceback
-
 from aiohttp import web
 from aiohttp.web import Request, Response, json_response
 from botbuilder.core import TurnContext
@@ -18,7 +15,16 @@ from botbuilder.schema import Activity
 from bot.demo_bot import DemoBot
 
 from config import BotConfig, DEFAULT_HOST, DEFAULT_PORT
+from utils.logging import (
+    activity_details_from_activity,
+    activity_log_details,
+    configure_logging,
+    get_logger,
+)
 
+
+configure_logging()
+LOGGER = get_logger(__name__)
 
 # Adapter: authenticates and translates HTTP <-> Bot Framework activities.
 ADAPTER = CloudAdapter(ConfigurationBotFrameworkAuthentication(BotConfig()))
@@ -34,8 +40,11 @@ async def on_error(context: TurnContext, error: Exception) -> None:
         context: The turn context in which the error occurred.
         error: The exception raised during turn processing.
     """
-    print(f"\n [on_turn_error] unhandled error: {error}", file=sys.stderr)
-    traceback.print_exc()
+    LOGGER.exception(
+        "Unhandled turn error: %s",
+        error,
+        extra=activity_log_details(context),
+    )
     await context.send_activity("The bot hit an error. Please try again.")
 
 
@@ -59,6 +68,7 @@ async def messages(req: Request) -> Response:
 
     body = await req.json()
     activity = Activity().deserialize(body)
+    LOGGER.info("Received activity", extra=activity_details_from_activity(activity))
     auth_header = req.headers.get("Authorization", "")
 
     response = await ADAPTER.process_activity(auth_header, activity, BOT.on_turn)

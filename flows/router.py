@@ -15,6 +15,10 @@ from cards.country_select_card import ACTION_SELECT_COUNTRY
 from cards.operation_card import ACTION_SELECT_OPERATION
 from cards.document_upload_card import ACTION_SUBMIT_DOCUMENTS
 from flows.vendor_create.create_flow import WorkflowController
+from utils.logging import activity_log_details, get_logger
+
+
+LOGGER = get_logger(__name__)
 
 
 class CardRouter:
@@ -44,6 +48,12 @@ class CardRouter:
                 for a plain text message.
         """
         action = (payload or {}).get("action")
+        LOGGER.info(
+            "Dispatching card action action=%s payload_keys=%s",
+            action or "-",
+            sorted((payload or {}).keys()),
+            extra=activity_log_details(turn_context),
+        )
 
         if action == ACTION_SELECT_COUNTRY:
             await self._controller.handle_country(

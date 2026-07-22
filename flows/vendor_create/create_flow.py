@@ -25,6 +25,10 @@ from config_data.country_config import ConfigService
 from services.progress_service import ProgressService
 from flows.vendor_create.document_collector import WorkflowService
 from models.workflow import WorkflowPhase
+from utils.logging import activity_log_details, get_logger
+
+
+LOGGER = get_logger(__name__)
 
 
 @dataclass
@@ -78,6 +82,10 @@ class WorkflowController:
         if session is None:
             session = Session(workflow=WorkflowService(self._config))
             self._sessions[conversation_id] = session
+            LOGGER.info(
+                "Created workflow session",
+                extra=activity_log_details(turn_context),
+            )
         return session
 
     @staticmethod
@@ -95,6 +103,10 @@ class WorkflowController:
             turn_context: The current turn context.
         """
         session = self._session(turn_context)
+        LOGGER.info(
+            "Showing country selection",
+            extra=activity_log_details(turn_context),
+        )
         session.workflow.start_workflow()
         session.progress_activity_id = None
         card = CountryCard.render(self._config.get_countries())
@@ -108,6 +120,11 @@ class WorkflowController:
             country: The selected country name.
         """
         session = self._session(turn_context)
+        LOGGER.info(
+            "Country selected country=%s",
+            country,
+            extra=activity_log_details(turn_context),
+        )
         session.workflow.select_country(country)
         card = OperationCard.render(self._config.get_operations(), country)
         await turn_context.send_activity(MessageFactory.attachment(card))
@@ -126,10 +143,21 @@ class WorkflowController:
         """
         session = self._session(turn_context)
         workflow = session.workflow
+        LOGGER.info(
+            "Operation selected operation=%s",
+            operation,
+            extra=activity_log_details(turn_context),
+        )
         workflow.select_operation(operation)
 
         if workflow.requires_documents():
             workflow.begin_document_collection()
+            LOGGER.info(
+                "Document collection started required_documents=%s current_document=%s",
+                workflow.get_documents(),
+                workflow.get_current_document(),
+                extra=activity_log_details(turn_context),
+            )
             card = UploadCard.render(
                 workflow.get_documents(),
                 workflow.get_state().country,
@@ -147,6 +175,12 @@ class WorkflowController:
         session = self._session(turn_context)
         workflow = session.workflow
 
+        LOGGER.info(
+            "Document submitted phase=%s",
+            workflow.get_state().phase.value,
+            extra=activity_log_details(turn_context),
+        )
+
         if workflow.get_state().phase is not WorkflowPhase.AWAITING_DOCUMENT:
             await turn_context.send_activity(
                 "The document step is not active right now."
@@ -155,12 +189,22 @@ class WorkflowController:
 
         document_value = self._extract_document_value(turn_context, payload)
         if not document_value:
+            LOGGER.info(
+                "Document submission missing document value",
+                extra=activity_log_details(turn_context),
+            )
             await turn_context.send_activity(
                 "Please provide a file path for local runs or upload a document attachment."
             )
             return
 
         workflow.submit_document(document_value)
+        LOGGER.info(
+            "Document accepted current_document=%s collected_count=%s",
+            workflow.get_current_document() or "-",
+            len(workflow.get_state().collected_documents),
+            extra=activity_log_details(turn_context),
+        )
 
         if workflow.get_state().phase is WorkflowPhase.AWAITING_DOCUMENT:
             card = UploadCard.render(
@@ -208,6 +252,7 @@ class WorkflowController:
             turn_context: The current turn context.
             session: The session being processed.
         """
+        LOGGER.info("Processing started", extra=activity_log_details(turn_context))
         session.workflow.submit_documents()
 
         progress_service = ProgressService(self._config.get_process())
@@ -217,6 +262,11 @@ class WorkflowController:
         first_card = ProgressCard.render(progress_service.state)
         sent = await turn_context.send_activity(MessageFactory.attachment(first_card))
         session.progress_activity_id = sent.id
+        LOGGER.info(
+            "Progress card sent progress_activity_id=%s",
+            session.progress_activity_id,
+            extra=activity_log_details(turn_context),
+        )
 
         # The processor drives state; this callback re-renders the same
         # card. Captured references let the background task update it after
@@ -249,5 +299,10 @@ class WorkflowController:
         async def _run_and_finalise() -> None:
             await processor.run()
             session.workflow.complete()
+            LOGGER.info(
+                "Processing completed progress_activity_id=%s",
+                session.progress_activity_id or "-",
+                extra=activity_log_details(turn_context),
+            )
 
         asyncio.create_task(_run_and_finalise())
