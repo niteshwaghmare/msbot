@@ -85,10 +85,9 @@ class WorkflowService:
         """
         if self._state.phase is not WorkflowPhase.COUNTRY_SELECTED:
             raise WorkflowError("Select a country before an operation.")
-        resolved_operation = self._config.resolve_operation(operation)
-        if resolved_operation is None:
+        if operation not in self._config.get_operations():
             raise WorkflowError(f"Unknown operation: {operation}")
-        self._state.operation = resolved_operation
+        self._state.operation = operation
         self._state.phase = WorkflowPhase.OPERATION_SELECTED
         return self._state
 

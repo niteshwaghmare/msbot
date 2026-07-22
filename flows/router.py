@@ -60,10 +60,9 @@ class CardRouter:
                 turn_context, payload["country"]
             )
         elif action == ACTION_SELECT_OPERATION:
-            operation = (payload or {}).get("operation") or (
-                turn_context.activity.text or ""
-            ).strip()
-            await self._controller.handle_operation(turn_context, str(operation))
+            await self._controller.handle_operation(
+                turn_context, payload["operation"]
+            )
         elif action == ACTION_SUBMIT_DOCUMENTS or bool(turn_context.activity.attachments):
             await self._controller.handle_submit(turn_context, payload)
         else:
