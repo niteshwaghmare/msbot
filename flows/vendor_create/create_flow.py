@@ -129,6 +129,12 @@ class WorkflowController:
             MessageFactory.text(f"Country selected: {country}")
         )
         card = OperationCard.render(self._config.get_operations(), country)
+        LOGGER.info(
+            "Showing operation selection country=%s operation_count=%s",
+            country,
+            len(self._config.get_operations()),
+            extra=activity_log_details(turn_context),
+        )
         await turn_context.send_activity(MessageFactory.attachment(card))
 
     async def handle_operation(
