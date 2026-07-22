@@ -10,10 +10,15 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
-from botbuilder.core import TurnContext
-from botbuilder.schema import Activity
+try:
+    from botbuilder.core import TurnContext
+    from botbuilder.schema import Activity
+except ImportError:  # pragma: no cover - exercised in minimal environments
+    TurnContext = Any
+    Activity = Any
 
 LOG_FORMAT = (
     "%(asctime)s %(levelname)s %(name)s "
@@ -50,18 +55,51 @@ def configure_logging() -> None:
     """Configure application logging once.
 
     The log level can be adjusted with ``LOG_LEVEL`` (for example,
-    ``DEBUG`` or ``WARNING``). Logs go to stderr by default, which keeps
-    them compatible with local runs and container log collectors.
+    ``DEBUG`` or ``WARNING``). Logs go to stderr by default, and can also
+    be written to a file via ``LOG_FILE`` for container and local runs.
     """
 
-    level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    level_name = os.getenv("LOG_LEVEL", "DEBUG").upper()
     level = getattr(logging, level_name, logging.INFO)
-    logging.basicConfig(level=level, format=LOG_FORMAT)
-    context_filter = ActivityContextFilter()
+
     root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+
+    third_party_loggers = [
+        "msrest.universal_http",
+        "msrest.universal_http.requests",
+        "urllib3.connectionpool",
+        "aiohttp.access",
+    ]
+    for logger_name in third_party_loggers:
+        logging.getLogger(logger_name).setLevel(logging.INFO)
+
+    for handler in list(root_logger.handlers):
+        root_logger.removeHandler(handler)
+        handler.close()
+
+    formatter = logging.Formatter(LOG_FORMAT)
+    context_filter = ActivityContextFilter()
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(level)
+    stream_handler.setFormatter(formatter)
+    stream_handler.addFilter(context_filter)
+    root_logger.addHandler(stream_handler)
+
+    log_file = os.getenv("LOG_FILE")
+    if not log_file:
+        log_file = str(Path(__file__).resolve().parents[1] / "logs" / "app.log")
+
+    log_path = Path(log_file)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    file_handler = logging.FileHandler(log_path)
+    file_handler.setLevel(level)
+    file_handler.setFormatter(formatter)
+    file_handler.addFilter(context_filter)
+    root_logger.addHandler(file_handler)
+
     root_logger.addFilter(context_filter)
-    for handler in root_logger.handlers:
-        handler.addFilter(context_filter)
 
 
 def get_logger(name: str) -> logging.Logger:

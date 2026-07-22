@@ -199,9 +199,14 @@ class WorkflowController:
             return
 
         workflow.submit_document(document_value)
+        next_document = (
+            workflow.get_current_document()
+            if workflow.get_state().phase is WorkflowPhase.AWAITING_DOCUMENT
+            else None
+        )
         LOGGER.info(
             "Document accepted current_document=%s collected_count=%s",
-            workflow.get_current_document() or "-",
+            next_document or "-",
             len(workflow.get_state().collected_documents),
             extra=activity_log_details(turn_context),
         )
@@ -210,7 +215,7 @@ class WorkflowController:
             card = UploadCard.render(
                 workflow.get_documents(),
                 workflow.get_state().country,
-                workflow.get_current_document(),
+                next_document,
                 self._is_local_environment(),
             )
             await turn_context.send_activity(MessageFactory.attachment(card))
