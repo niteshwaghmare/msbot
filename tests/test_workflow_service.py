@@ -39,6 +39,41 @@ class WorkflowServiceDocumentFlowTests(unittest.TestCase):
         with self.assertRaises(WorkflowError):
             self.service.submit_document("/tmp/avis.pdf")
 
+    def test_select_operation_accepts_messageback_text_variants(self) -> None:
+        self.service.start_workflow()
+        self.service.select_country("France")
+
+        state = self.service.select_operation(" request check ")
+
+        self.assertEqual(state.operation, "Request Check")
+        self.assertEqual(state.phase, WorkflowPhase.OPERATION_SELECTED)
+
+
+class CardRouterTests(unittest.IsolatedAsyncioTestCase):
+    async def test_operation_route_falls_back_to_messageback_text(self) -> None:
+        from types import SimpleNamespace
+
+        from cards.operation_card import ACTION_SELECT_OPERATION
+        from flows.router import CardRouter
+
+        class ControllerStub:
+            def __init__(self) -> None:
+                self.operation: str | None = None
+
+            async def handle_operation(self, turn_context, operation: str) -> None:
+                self.operation = operation
+
+        controller = ControllerStub()
+        turn_context = SimpleNamespace(
+            activity=SimpleNamespace(text="Request Check", attachments=[])
+        )
+
+        await CardRouter(controller).route(
+            turn_context, {"action": ACTION_SELECT_OPERATION}
+        )
+
+        self.assertEqual(controller.operation, "Request Check")
+
 
 class DocumentProcessorTests(unittest.IsolatedAsyncioTestCase):
     async def test_processor_executes_country_workflow_in_config_order(self) -> None:
