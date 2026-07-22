@@ -14,6 +14,8 @@ from botbuilder.core import TurnContext
 from cards.country_select_card import ACTION_SELECT_COUNTRY
 from cards.operation_card import ACTION_SELECT_OPERATION
 from cards.document_upload_card import ACTION_SUBMIT_DOCUMENTS
+from cards.details_form_card import ACTION_SUBMIT_VENDOR_INFORMATION
+from cards.review_card import ACTION_CONFIRM_VENDOR, ACTION_EDIT_VENDOR_INFORMATION
 from flows.vendor_create.create_flow import WorkflowController
 from utils.logging import activity_log_details, get_logger
 
@@ -65,6 +67,10 @@ class CardRouter:
             )
         elif action == ACTION_SUBMIT_DOCUMENTS or bool(turn_context.activity.attachments):
             await self._controller.handle_submit(turn_context, payload)
+        elif action == ACTION_SUBMIT_VENDOR_INFORMATION:
+            await self._controller.handle_vendor_information(turn_context, payload or {})
+        elif action in {ACTION_CONFIRM_VENDOR, ACTION_EDIT_VENDOR_INFORMATION}:
+            await self._controller.handle_review_action(turn_context, payload or {})
         else:
             # Unknown action, or plain text: (re)start the flow.
             await self._controller.show_countries(turn_context)

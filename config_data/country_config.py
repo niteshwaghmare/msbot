@@ -78,8 +78,11 @@ class ConfigService:
                         document_type=document["documentType"],
                         display_name=document.get("displayName", document["documentType"]),
                         operations=list(document.get("operations", [])),
+                        required=bool(document.get("required", True)),
                         min_files=int(document.get("minFiles", 1)),
+                        max_files=int(document.get("maxFiles", document.get("minFiles", 1))),
                         allow_multiple=bool(document.get("allowMultiple", False)),
+                        allowed_extensions=list(document.get("allowedExtensions", [])),
                     )
                     for document in body.get("documents", [])
                 ]
@@ -114,6 +117,7 @@ class ConfigService:
         for country in countries.values():
             if not country.workflow:
                 raise ConfigError(f"Country {country.name} defines no workflow.")
+            self._validate_country(country)
 
         delay = raw.get("simulation", {}).get("step_delay_seconds", 0.0)
         return WorkflowConfig(
@@ -122,6 +126,69 @@ class ConfigService:
             operation_registry=operation_registry,
             step_delay_seconds=float(delay),
         )
+
+
+    def _validate_country(self, country: Country) -> None:
+        """Validate workflow references and document upload constraints."""
+        document_types = set(country.document_types)
+        seen_workflow_ids: set[str] = set()
+        for document in country.documents:
+            if document.min_files < 0 or document.max_files < document.min_files:
+                raise ConfigError(f"Invalid minFiles/maxFiles for {country.name}.{document.document_type}.")
+            if not document.allow_multiple and document.max_files > 1:
+                raise ConfigError(f"allowMultiple false cannot have maxFiles > 1 for {country.name}.{document.document_type}.")
+
+        for step in country.workflow:
+            if step.id in seen_workflow_ids:
+                raise ConfigError(f"Duplicate workflow id {step.id} in {country.name}.")
+            seen_workflow_ids.add(step.id)
+            if not step.type:
+                raise ConfigError(f"Workflow step {step.id} missing type.")
+            if step.type == "document":
+                if not step.document:
+                    raise ConfigError(f"Document workflow step {step.id} missing document reference.")
+                if step.document not in document_types:
+                    raise ConfigError(f"Workflow document {step.document} not present in documents for {country.name}.")
+                nested_steps = step.raw.get("steps", [])
+                if not nested_steps:
+                    raise ConfigError(f"Document workflow step {step.id} has empty steps.")
+                nested_ids: set[str] = set()
+                for nested in nested_steps:
+                    nested_id = nested.get("id")
+                    if nested_id in nested_ids:
+                        raise ConfigError(f"Duplicate nested workflow id {nested_id} in {step.id}.")
+                    nested_ids.add(nested_id)
+                    nested_type = nested.get("type")
+                    if nested_type in {"operation", "decision"} and not nested.get("operation"):
+                        raise ConfigError(f"Nested step {nested_id} missing operation name.")
+                    if nested_type == "decision" and ("onSuccess" not in nested or "onDuplicate" not in nested):
+                        raise ConfigError(f"Decision step {nested_id} missing decision outcomes.")
+            elif step.type in {"operation", "decision"}:
+                if not step.operation:
+                    raise ConfigError(f"Workflow step {step.id} missing operation name.")
+            elif step.type == "form":
+                self._validate_form_step(country.name, step)
+            elif step.type in {"review", "upload"}:
+                if step.type == "upload" and step.document not in document_types:
+                    raise ConfigError(f"Upload step {step.id} references unknown document {step.document}.")
+            else:
+                raise ConfigError(f"Unsupported workflow step type {step.type} in {country.name}.")
+
+    def _validate_form_step(self, country_name: str, step: WorkflowStep) -> None:
+        """Validate dynamic form field configuration."""
+        allowed_types = {"text", "email", "tel", "number", "date", "choice"}
+        fields = step.raw.get("fields", [])
+        seen_fields: set[str] = set()
+        for field in fields:
+            field_id = field.get("id")
+            if not field_id or field_id in seen_fields:
+                raise ConfigError(f"Duplicate or missing form field id in {country_name}.{step.id}.")
+            seen_fields.add(field_id)
+            if field.get("type") not in allowed_types:
+                raise ConfigError(f"Unknown form field type {field.get('type')} in {country_name}.{step.id}.")
+        submit = step.raw.get("submit", {})
+        if fields and not submit.get("action"):
+            raise ConfigError(f"Form step {step.id} missing submit action.")
 
     def get_countries(self) -> list[str]:
         """Return all country display names, in configured order.

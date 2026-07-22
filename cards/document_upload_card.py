@@ -27,6 +27,7 @@ class UploadCard:
         country: str,
         current_document: str | None = None,
         is_local: bool = False,
+        upload_config: dict[str, str] | None = None,
     ) -> Attachment:
         """Build the document-upload card.
 
@@ -47,10 +48,11 @@ class UploadCard:
 
         current_document = current_document or documents[0]
 
+        upload_config = upload_config or {}
         body: list[dict[str, Any]] = [
             {
                 "type": "TextBlock",
-                "text": "Upload required documents",
+                "text": upload_config.get("title", "Upload required documents"),
                 "weight": "Bolder",
                 "size": "Large",
             },
@@ -63,7 +65,7 @@ class UploadCard:
             },
             {
                 "type": "TextBlock",
-                "text": f"Please provide: {current_document}",
+                "text": upload_config.get("prompt", f"Please provide: {current_document}"),
                 "wrap": True,
                 "spacing": "Medium",
             },

@@ -8,13 +8,16 @@ from typing import Any
 
 @dataclass(frozen=True)
 class DocumentConfig:
-    """Document configuration for a country."""
+    """Document metadata and upload validation configuration."""
 
     document_type: str
     display_name: str
-    operations: list[str]
+    operations: list[str] = field(default_factory=list)
+    required: bool = True
     min_files: int = 1
+    max_files: int = 1
     allow_multiple: bool = False
+    allowed_extensions: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -45,8 +48,11 @@ class Country:
         """Document type identifiers in configured order."""
         return [document.document_type for document in self.documents]
 
+    def get_document(self, document_type: str) -> DocumentConfig | None:
+        """Return metadata for one configured document type."""
+        return next((doc for doc in self.documents if doc.document_type == document_type), None)
 
-# Backward-compatible alias used by ProgressService.
+
 ProcessStep = WorkflowStep
 
 

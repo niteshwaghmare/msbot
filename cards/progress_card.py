@@ -27,7 +27,7 @@ class ProgressCard:
     """Builds the in-place-updated processing status card."""
 
     @staticmethod
-    def render(state: ProgressState) -> Attachment:
+    def render(state: ProgressState, title: str | None = None) -> Attachment:
         """Build the progress card for the current state.
 
         Args:
@@ -42,11 +42,13 @@ class ProgressCard:
         if not state.steps:
             raise ValueError("Cannot render progress card with no steps.")
 
-        heading = (
+        heading = title or (
             "Vendor Created Successfully"
             if state.is_complete
             else "Processing…"
         )
+        if title and state.is_complete:
+            heading = f"{title} Completed"
         body: list[dict[str, Any]] = [
             {
                 "type": "TextBlock",

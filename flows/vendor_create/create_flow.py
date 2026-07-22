@@ -13,18 +13,22 @@ import os
 from dataclasses import dataclass
 
 from botbuilder.core import MessageFactory, TurnContext
-from botbuilder.schema import Activity
 
 from cards.country_select_card import CountryCard
 from cards.operation_card import OperationCard
 from cards.progress_card import ProgressCard
 from cards.document_upload_card import UploadCard
-from models.progress import ProgressState
+from cards.details_form_card import DetailsFormCard
+from cards.review_card import ReviewCard
+from models.progress import ProgressState, StepStatus
 from config_data.country_config import ConfigService
 from services.progress_service import ProgressService
-from flows.vendor_create.document_collector import WorkflowService
+from flows.vendor_create.document_collector import WorkflowService, WorkflowError
 from models.workflow import WorkflowPhase
 from utils.logging import activity_log_details, get_logger
+from core.operation_factory import OperationFactory
+from core.document_processor import ProcessingContext
+from models.workflow import DocumentStatus
 
 
 LOGGER = get_logger(__name__)
@@ -157,75 +161,58 @@ class WorkflowController:
 
         if workflow.requires_documents():
             workflow.begin_document_collection()
-            LOGGER.info(
-                "Document collection started required_documents=%s current_document=%s",
-                workflow.get_documents(),
-                workflow.get_current_document(),
-                extra=activity_log_details(turn_context),
-            )
-            card = UploadCard.render(
-                workflow.get_documents(),
-                workflow.get_state().country,
-                workflow.get_current_document(),
-                self._is_local_environment(),
-            )
-            await turn_context.send_activity(MessageFactory.attachment(card))
+            await self._send_current_step(turn_context, session)
         else:
             await self._begin_processing(turn_context, session)
 
     async def handle_submit(
         self, turn_context: TurnContext, payload: dict[str, object] | None = None
     ) -> None:
-        """Handle document submission and advance the workflow."""
+        """Handle document upload and run that document before advancing."""
         session = self._session(turn_context)
         workflow = session.workflow
-
-        LOGGER.info(
-            "Document submitted phase=%s",
-            workflow.get_state().phase.value,
-            extra=activity_log_details(turn_context),
-        )
-
         if workflow.get_state().phase is not WorkflowPhase.AWAITING_DOCUMENT:
-            await turn_context.send_activity(
-                "The document step is not active right now."
-            )
+            await turn_context.send_activity("The document step is not active right now.")
             return
-
         document_value = self._extract_document_value(turn_context, payload)
         if not document_value:
-            LOGGER.info(
-                "Document submission missing document value",
-                extra=activity_log_details(turn_context),
-            )
-            await turn_context.send_activity(
-                "Please provide a file path for local runs or upload a document attachment."
-            )
+            await turn_context.send_activity("Please provide a file path for local runs or upload a document attachment.")
             return
+        try:
+            workflow.submit_document(document_value)
+        except WorkflowError as error:
+            await turn_context.send_activity(str(error))
+            return
+        await self._process_current_document(turn_context, session)
+        await self._send_current_step(turn_context, session)
 
-        workflow.submit_document(document_value)
-        next_document = (
-            workflow.get_current_document()
-            if workflow.get_state().phase is WorkflowPhase.AWAITING_DOCUMENT
-            else None
-        )
-        LOGGER.info(
-            "Document accepted current_document=%s collected_count=%s",
-            next_document or "-",
-            len(workflow.get_state().collected_documents),
-            extra=activity_log_details(turn_context),
-        )
-
-        if workflow.get_state().phase is WorkflowPhase.AWAITING_DOCUMENT:
-            card = UploadCard.render(
-                workflow.get_documents(),
-                workflow.get_state().country,
-                next_document,
-                self._is_local_environment(),
-            )
+    async def handle_vendor_information(
+        self, turn_context: TurnContext, payload: dict[str, object]
+    ) -> None:
+        """Validate and store configured vendor-information fields."""
+        session = self._session(turn_context)
+        errors = session.workflow.submit_form(payload)
+        if errors:
+            step = session.workflow.current_step().raw
+            card = DetailsFormCard.render(step, session.workflow.get_state().form_data, errors)
             await turn_context.send_activity(MessageFactory.attachment(card))
-        else:
-            await self._begin_processing(turn_context, session)
+            return
+        await self._send_current_step(turn_context, session)
+
+    async def handle_review_action(
+        self, turn_context: TurnContext, payload: dict[str, object]
+    ) -> None:
+        """Handle review confirmation or edit-information requests."""
+        session = self._session(turn_context)
+        action = payload.get("action")
+        if action == "edit_vendor_information":
+            session.workflow.edit_form()
+            await self._send_current_step(turn_context, session)
+            return
+        if action == "confirm_vendor" and session.workflow.confirm_review():
+            await self._execute_vendor_creation(turn_context, session)
+            return
+        await turn_context.send_activity("That review action is no longer active.")
 
     def _extract_document_value(
         self, turn_context: TurnContext, payload: dict[str, object] | None
@@ -248,74 +235,106 @@ class WorkflowController:
 
     # --- Processing --------------------------------------------------------
 
-    async def _begin_processing(
-        self, turn_context: TurnContext, session: Session
-    ) -> None:
-        """Transition to processing and run the simulation in the background.
+    async def _begin_processing(self, turn_context: TurnContext, session: Session) -> None:
+        """Run a non-document operation path through the current workflow."""
+        await self._execute_vendor_creation(turn_context, session)
 
-        Sends the initial progress card, captures its activity id for
-        in-place updates, then runs the configuration-driven processor, which updates the
-        existing card after every configured workflow step.
-
-        Args:
-            turn_context: The current turn context.
-            session: The session being processed.
-        """
-        LOGGER.info("Processing started", extra=activity_log_details(turn_context))
-        session.workflow.submit_documents()
-
-        country_config = self._config.get_country(session.workflow.get_state().country or "")
-        if country_config is None:
-            await turn_context.send_activity("Please select a configured country before processing.")
+    async def _send_current_step(self, turn_context: TurnContext, session: Session) -> None:
+        """Render the card for the current top-level workflow step and then pause."""
+        step = session.workflow.current_step()
+        state = session.workflow.get_state()
+        if step.type == "document":
+            card = UploadCard.render([step.document or "document"], state.country or "", step.document, self._is_local_environment(), step.raw.get("upload", {}))
+            await turn_context.send_activity(MessageFactory.attachment(card))
             return
-
-        progress_service = ProgressService(country_config.workflow)
-
-        # Send the first progress card and remember its id so every later
-        # render updates this same message instead of posting a new one.
-        first_card = ProgressCard.render(progress_service.state)
-        sent = await turn_context.send_activity(MessageFactory.attachment(first_card))
-        session.progress_activity_id = sent.id
-        LOGGER.info(
-            "Progress card sent progress_activity_id=%s",
-            session.progress_activity_id,
-            extra=activity_log_details(turn_context),
-        )
-
-        # The processor drives state; this callback re-renders the same
-        # card. Captured references let the background task update it after
-        # the turn has already returned.
-        reference = TurnContext.get_conversation_reference(turn_context.activity)
-        adapter = turn_context.adapter
-
-        async def on_update(state: ProgressState) -> None:
-            async def _do_update(ctx: TurnContext) -> None:
-                card = ProgressCard.render(state)
-                activity = MessageFactory.attachment(card)
-                activity.id = session.progress_activity_id
-                await ctx.update_activity(activity)
-
-            await adapter.continue_conversation(
-                reference, _do_update, self._app_id
-            )
-
-        from core.document_processor import DocumentProcessor, ProcessingContext
-
-        uploaded_files = dict(
-            zip(session.workflow.get_documents(), session.workflow.get_state().collected_documents)
-        )
-        context = ProcessingContext(
-            selected_country=country_config.name,
-            uploaded_files=uploaded_files,
-        )
-        processor = DocumentProcessor(country_config.workflow, progress_service, on_update)
-        result = await processor.run(context)
-        if result.error_message:
-            await turn_context.send_activity(result.error_message)
+        if step.type == "form":
+            card = DetailsFormCard.render(step.raw, state.form_data)
+            await turn_context.send_activity(MessageFactory.attachment(card))
             return
+        if step.type == "review":
+            card = ReviewCard.render(step.raw, state)
+            await turn_context.send_activity(MessageFactory.attachment(card))
+            return
+        if step.type == "operation":
+            await self._execute_vendor_creation(turn_context, session)
+
+    async def _process_current_document(self, turn_context: TurnContext, session: Session) -> None:
+        """Run the active document stage's nested steps sequentially."""
+        state = session.workflow.get_state()
+        document_type = state.current_document
+        if not document_type:
+            return
+        workflow_step = session.workflow.current_step()
+        document_state = state.documents[document_type]
+        document_state.status = DocumentStatus.PROCESSING
+        progress_service = ProgressService([type(workflow_step)(id=s["id"], title=s["title"], type=s["type"], operation=s.get("operation"), document=document_type, raw=dict(s)) for s in workflow_step.raw.get("steps", [])])
+        progress_service.start()
+        for progress_step in progress_service.state.steps:
+            if document_state.steps.get(progress_step.id) == "COMPLETED":
+                progress_step.status = StepStatus.COMPLETED
+        title = workflow_step.raw.get("progressCard", {}).get("title")
+        if not document_state.progress_activity_id:
+            sent = await turn_context.send_activity(MessageFactory.attachment(ProgressCard.render(progress_service.state, title)))
+            document_state.progress_activity_id = sent.id
+        await self._update_progress_card(turn_context, document_state.progress_activity_id, progress_service.state, title)
+        context = ProcessingContext(selected_country=state.country or "", uploaded_files={document_type: document_state.files[0]}, document_type=document_type, uploaded_file=document_state.files[0])
+        for index, nested in enumerate(workflow_step.raw.get("steps", [])):
+            if document_state.steps.get(nested["id"]) == "COMPLETED":
+                continue
+            progress_service.state.current_index = index
+            progress_service.state.steps[index].status = StepStatus.RUNNING
+            document_state.current_step_index = index
+            document_state.steps[nested["id"]] = "IN_PROGRESS"
+            await self._update_progress_card(turn_context, document_state.progress_activity_id, progress_service.state, title)
+            try:
+                operation = OperationFactory.get(nested["operation"])
+                result = await operation.execute(context)
+                if result is not None:
+                    context = result
+                document_state.results[nested["id"]] = self._operation_result(context, nested["operation"])
+                document_state.steps[nested["id"]] = "COMPLETED"
+                progress_service.state.steps[index].status = StepStatus.COMPLETED
+                await self._update_progress_card(turn_context, document_state.progress_activity_id, progress_service.state, title)
+            except Exception as error:
+                LOGGER.exception("Document operation failed step_id=%s", nested.get("id"))
+                document_state.steps[nested["id"]] = "FAILED"
+                progress_service.state.steps[index].status = StepStatus.FAILED
+                session.workflow.fail_document("Document processing failed. Please try again or contact support.")
+                await self._update_progress_card(turn_context, document_state.progress_activity_id, progress_service.state, title)
+                await turn_context.send_activity("Document processing failed. Please try again or contact support.")
+                return
+        progress_service.complete()
+        await self._update_progress_card(turn_context, document_state.progress_activity_id, progress_service.state, title)
+        session.workflow.complete_document()
+
+    async def _update_progress_card(self, turn_context: TurnContext, activity_id: str | None, state: ProgressState, title: str | None) -> None:
+        """Update an existing progress activity in place."""
+        if not activity_id:
+            return
+        activity = MessageFactory.attachment(ProgressCard.render(state, title))
+        activity.id = activity_id
+        await turn_context.update_activity(activity)
+
+    async def _execute_vendor_creation(self, turn_context: TurnContext, session: Session) -> None:
+        """Execute CREATE_VENDOR once through the operation factory."""
+        if not session.workflow.mark_vendor_created():
+            await turn_context.send_activity("Vendor creation was already completed.")
+            return
+        step = session.workflow.current_step()
+        context = ProcessingContext(selected_country=session.workflow.get_state().country or "")
+        await OperationFactory.get(step.operation or "CREATE_VENDOR").execute(context)
         session.workflow.complete()
-        LOGGER.info(
-            "Processing completed progress_activity_id=%s",
-            session.progress_activity_id or "-",
-            extra=activity_log_details(turn_context),
-        )
+        await turn_context.send_activity("Vendor created successfully.")
+
+    @staticmethod
+    def _operation_result(context: ProcessingContext, operation_name: str) -> object:
+        """Return the relevant non-sensitive operation result snapshot."""
+        return {
+            "OCR": context.ocr_result,
+            "VALIDATION": context.validation_result,
+            "SIRET": context.tax_details,
+            "TIN": context.tax_details,
+            "BANK": context.bank_details,
+            "GST": context.tax_details,
+            "DUPLICATE_CHECK": context.duplicate_check_result,
+        }.get(operation_name, context.workflow_data)
