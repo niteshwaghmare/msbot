@@ -110,6 +110,20 @@ class ConfigService:
     def get_operations(self) -> list[str]:
         return list(self._config.operations)
 
+    def resolve_operation(self, operation: str) -> str | None:
+        """Return the configured operation label matching user/card input.
+
+        Matching is intentionally tolerant because Teams messageBack
+        activities can round-trip the button text instead of the full card
+        payload. The configured spelling is returned so downstream state
+        remains consistent with ``countries.json``.
+        """
+        normalized = operation.strip().casefold()
+        for configured_operation in self._config.operations:
+            if configured_operation.casefold() == normalized:
+                return configured_operation
+        return None
+
     def get_workflow(self, name: str) -> list[WorkflowStep]:
         return list(self._require_country(name).workflow)
 
