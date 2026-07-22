@@ -8,7 +8,7 @@ FakeProcessor drives it; ProgressCard reads the resulting snapshot.
 
 from __future__ import annotations
 
-from models.config_models import ProcessStep
+from models.country import ProcessStep
 from models.progress import ProgressState, ProgressStep, StepStatus
 
 

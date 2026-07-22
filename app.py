@@ -5,32 +5,19 @@ wires up the adapter with error handling, and dispatches incoming
 activities to DemoBot.
 """
 
-import os
 import sys
 import traceback
-from datetime import datetime
 
 from aiohttp import web
 from aiohttp.web import Request, Response, json_response
 from botbuilder.core import TurnContext
 from botbuilder.core.integration import aiohttp_error_middleware
 from botbuilder.integration.aiohttp import CloudAdapter, ConfigurationBotFrameworkAuthentication
-from botbuilder.schema import Activity, ActivityTypes
+from botbuilder.schema import Activity
 
 from bot.demo_bot import DemoBot
 
-
-class BotConfig:
-    """Runtime configuration for the bot adapter.
-
-    Reads Microsoft App credentials from environment variables. For local
-    Emulator testing these can be left blank.
-    """
-
-    APP_ID: str = os.environ.get("MicrosoftAppId", "")
-    APP_PASSWORD: str = os.environ.get("MicrosoftAppPassword", "")
-    APP_TYPE: str = os.environ.get("MicrosoftAppType", "MultiTenant")
-    APP_TENANT_ID: str = os.environ.get("MicrosoftAppTenantId", "")
+from config import BotConfig, DEFAULT_HOST, DEFAULT_PORT
 
 
 # Adapter: authenticates and translates HTTP <-> Bot Framework activities.
@@ -95,6 +82,6 @@ APP = create_app()
 
 if __name__ == "__main__":
     try:
-        web.run_app(APP, host="localhost", port=3978)
+        web.run_app(APP, host=DEFAULT_HOST, port=DEFAULT_PORT)
     except Exception as error:
         raise error
