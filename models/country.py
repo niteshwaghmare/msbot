@@ -1,64 +1,64 @@
-"""Typed representations of the workflow configuration file.
-
-These dataclasses mirror the structure of config_data/countries.json so the
-rest of the app works with typed objects rather than raw dictionaries.
-ConfigService is responsible for constructing them from parsed JSON.
-"""
+"""Typed representations of the workflow configuration file."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
+
+
+@dataclass(frozen=True)
+class DocumentConfig:
+    """Document configuration for a country."""
+
+    document_type: str
+    display_name: str
+    operations: list[str]
+    min_files: int = 1
+    allow_multiple: bool = False
+
+
+@dataclass(frozen=True)
+class WorkflowStep:
+    """A single configured workflow stage."""
+
+    id: str
+    title: str
+    type: str
+    operation: str | None = None
+    document: str | None = None
+    card: str | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class Country:
-    """A country available for vendor onboarding.
-
-    Attributes:
-        name: Display name, e.g. "France". Used as the selection key.
-        documents: Document types required for this country, in order.
-    """
+    """A country available for vendor onboarding."""
 
     name: str
-    documents: list[str]
+    country_code: str
+    currency: str
+    documents: list[DocumentConfig]
+    workflow: list[WorkflowStep]
+
+    @property
+    def document_types(self) -> list[str]:
+        """Document type identifiers in configured order."""
+        return [document.document_type for document in self.documents]
 
 
-@dataclass(frozen=True)
-class ProcessStep:
-    """A single stage in the simulated onboarding process.
-
-    Attributes:
-        id: Stable identifier, e.g. "extract". Used in state, not shown.
-        title: Human-readable label shown on the progress card.
-    """
-
-    id: str
-    title: str
+# Backward-compatible alias used by ProgressService.
+ProcessStep = WorkflowStep
 
 
 @dataclass(frozen=True)
 class WorkflowConfig:
-    """The fully parsed workflow configuration.
-
-    Attributes:
-        countries: Countries keyed by display name for O(1) lookup.
-        operations: Available operation labels, in display order.
-        process: Ordered process steps driving the simulation.
-        step_delay_seconds: Delay between simulated steps.
-    """
+    """The fully parsed workflow configuration."""
 
     countries: dict[str, Country]
     operations: list[str]
-    process: list[ProcessStep]
-    step_delay_seconds: float = 2.0
+    operation_registry: dict[str, str] = field(default_factory=dict)
+    step_delay_seconds: float = 0.0
 
     def get_country(self, name: str) -> Country | None:
-        """Return the country by display name, or None if absent.
-
-        Args:
-            name: The country display name to look up.
-
-        Returns:
-            The matching Country, or None if no such country exists.
-        """
+        """Return the country by display name, or None if absent."""
         return self.countries.get(name)
