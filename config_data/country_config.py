@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from models.country import Country, ProcessStep, WorkflowConfig
+from models.country import Country, DocumentConfig, WorkflowConfig, WorkflowStep
 
 
 class ConfigError(Exception):
@@ -69,42 +69,57 @@ class ConfigService:
             raise ConfigError(f"Invalid JSON in {self._path}: {error}") from error
 
     def _parse(self, raw: dict) -> WorkflowConfig:
-        """Convert a raw config dict into a typed WorkflowConfig.
-
-        Args:
-            raw: The decoded JSON dictionary.
-
-        Returns:
-            The typed, validated configuration.
-
-        Raises:
-            ConfigError: If required keys are missing or malformed.
-        """
+        """Convert a raw config dict into a typed WorkflowConfig."""
         try:
-            countries = {
-                name: Country(name=name, documents=list(body["documents"]))
-                for name, body in raw["countries"].items()
-            }
+            countries = {}
+            for name, body in raw["countries"].items():
+                documents = [
+                    DocumentConfig(
+                        document_type=document["documentType"],
+                        display_name=document.get("displayName", document["documentType"]),
+                        operations=list(document.get("operations", [])),
+                        min_files=int(document.get("minFiles", 1)),
+                        allow_multiple=bool(document.get("allowMultiple", False)),
+                    )
+                    for document in body.get("documents", [])
+                ]
+                workflow = [
+                    WorkflowStep(
+                        id=step["id"],
+                        title=step["title"],
+                        type=step["type"],
+                        operation=step.get("operation"),
+                        document=step.get("document"),
+                        card=step.get("card"),
+                        raw=dict(step),
+                    )
+                    for step in body.get("workflow", [])
+                ]
+                countries[name] = Country(
+                    name=name,
+                    country_code=body.get("countryCode", ""),
+                    currency=body.get("currency", ""),
+                    documents=documents,
+                    workflow=workflow,
+                )
             operations = list(raw["operations"])
-            process = [
-                ProcessStep(id=step["id"], title=step["title"])
-                for step in raw["process"]
-            ]
-        except (KeyError, TypeError) as error:
+            operation_registry = dict(raw.get("operationRegistry", {}))
+        except (KeyError, TypeError, ValueError) as error:
             raise ConfigError(f"Malformed configuration: {error}") from error
 
         if not countries:
             raise ConfigError("Configuration defines no countries.")
         if not operations:
             raise ConfigError("Configuration defines no operations.")
-        if not process:
-            raise ConfigError("Configuration defines no process steps.")
+        for country in countries.values():
+            if not country.workflow:
+                raise ConfigError(f"Country {country.name} defines no workflow.")
 
-        delay = raw.get("simulation", {}).get("step_delay_seconds", 2.0)
+        delay = raw.get("simulation", {}).get("step_delay_seconds", 0.0)
         return WorkflowConfig(
             countries=countries,
             operations=operations,
-            process=process,
+            operation_registry=operation_registry,
             step_delay_seconds=float(delay),
         )
 
@@ -142,7 +157,25 @@ class ConfigService:
         country = self._config.get_country(name)
         if country is None:
             raise ConfigError(f"Unknown country: {name}")
-        return list(country.documents)
+        return country.document_types
+
+
+    def get_workflow(self, name: str) -> list[WorkflowStep]:
+        """Return the configured workflow for a country.
+
+        Args:
+            name: The country display name.
+
+        Returns:
+            The workflow steps for that country.
+
+        Raises:
+            ConfigError: If the country is not configured.
+        """
+        country = self._config.get_country(name)
+        if country is None:
+            raise ConfigError(f"Unknown country: {name}")
+        return list(country.workflow)
 
     def get_operations(self) -> list[str]:
         """Return all operation labels, in configured order.
@@ -152,13 +185,16 @@ class ConfigService:
         """
         return list(self._config.operations)
 
-    def get_process(self) -> list[ProcessStep]:
+    def get_process(self) -> list[WorkflowStep]:
         """Return the ordered process steps.
 
         Returns:
             The list of process steps driving the simulation.
         """
-        return list(self._config.process)
+        if not self._config.countries:
+            return []
+        first_country = next(iter(self._config.countries.values()))
+        return list(first_country.workflow)
 
     @property
     def step_delay_seconds(self) -> float:

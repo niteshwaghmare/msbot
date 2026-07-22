@@ -9,7 +9,6 @@ state-machine rules; it composes the services and card builders.
 
 from __future__ import annotations
 
-import asyncio
 import os
 from dataclasses import dataclass
 
@@ -255,9 +254,8 @@ class WorkflowController:
         """Transition to processing and run the simulation in the background.
 
         Sends the initial progress card, captures its activity id for
-        in-place updates, then launches the FakeProcessor as a background
-        task so the turn returns promptly rather than blocking for the
-        full simulation.
+        in-place updates, then runs the configuration-driven processor, which updates the
+        existing card after every configured workflow step.
 
         Args:
             turn_context: The current turn context.
@@ -266,7 +264,12 @@ class WorkflowController:
         LOGGER.info("Processing started", extra=activity_log_details(turn_context))
         session.workflow.submit_documents()
 
-        progress_service = ProgressService(self._config.get_process())
+        country_config = self._config.get_country(session.workflow.get_state().country or "")
+        if country_config is None:
+            await turn_context.send_activity("Please select a configured country before processing.")
+            return
+
+        progress_service = ProgressService(country_config.workflow)
 
         # Send the first progress card and remember its id so every later
         # render updates this same message instead of posting a new one.
@@ -296,24 +299,23 @@ class WorkflowController:
                 reference, _do_update, self._app_id
             )
 
-        # Import here to avoid a circular import at module load time.
-        from processors.vendor_processor import FakeProcessor
+        from core.document_processor import DocumentProcessor, ProcessingContext
 
-        processor = FakeProcessor(
-            progress_service,
-            on_update,
-            step_delay_seconds=self._config.step_delay_seconds,
+        uploaded_files = dict(
+            zip(session.workflow.get_documents(), session.workflow.get_state().collected_documents)
         )
-
-        # Run without blocking the turn. On completion, mark the workflow
-        # complete so the session reflects the finished state.
-        async def _run_and_finalise() -> None:
-            await processor.run()
-            session.workflow.complete()
-            LOGGER.info(
-                "Processing completed progress_activity_id=%s",
-                session.progress_activity_id or "-",
-                extra=activity_log_details(turn_context),
-            )
-
-        asyncio.create_task(_run_and_finalise())
+        context = ProcessingContext(
+            selected_country=country_config.name,
+            uploaded_files=uploaded_files,
+        )
+        processor = DocumentProcessor(country_config.workflow, progress_service, on_update)
+        result = await processor.run(context)
+        if result.error_message:
+            await turn_context.send_activity(result.error_message)
+            return
+        session.workflow.complete()
+        LOGGER.info(
+            "Processing completed progress_activity_id=%s",
+            session.progress_activity_id or "-",
+            extra=activity_log_details(turn_context),
+        )

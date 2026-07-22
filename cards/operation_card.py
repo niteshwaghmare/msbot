@@ -57,11 +57,6 @@ class OperationCard:
                 "type": "Action.Submit",
                 "title": operation,
                 "data": {
-                    "msteams": {
-                        "type": "messageBack",
-                        "displayText": operation,
-                        "text": operation,
-                    },
                     "action": ACTION_SELECT_OPERATION,
                     "operation": operation,
                 },
