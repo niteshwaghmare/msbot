@@ -7,91 +7,182 @@
                 {
                     "documentType": "AVIS",
                     "displayName": "AVIS",
+                    "required": true,
                     "minFiles": 1,
+                    "maxFiles": 1,
                     "allowMultiple": false,
-                    "operations": [
-                        "OCR",
-                        "VALIDATION",
-                        "SIRET"
+                    "allowedExtensions": [
+                        ".pdf",
+                        ".png",
+                        ".jpg",
+                        ".jpeg"
                     ]
                 },
                 {
                     "documentType": "RIB",
                     "displayName": "RIB",
+                    "required": true,
                     "minFiles": 1,
+                    "maxFiles": 1,
                     "allowMultiple": false,
-                    "operations": [
-                        "OCR",
-                        "BANK"
+                    "allowedExtensions": [
+                        ".pdf",
+                        ".png",
+                        ".jpg",
+                        ".jpeg"
                     ]
                 }
             ],
             "workflow": [
                 {
-                    "id": "upload_avis",
-                    "title": "Upload AVIS Document",
-                    "type": "upload",
-                    "document": "AVIS"
+                    "id": "process_avis",
+                    "title": "Process AVIS Document",
+                    "type": "document",
+                    "document": "AVIS",
+                    "upload": {
+                        "title": "Upload AVIS Document",
+                        "prompt": "Please upload the AVIS document."
+                    },
+                    "progressCard": {
+                        "title": "AVIS Processing",
+                        "updateAfterEachStep": true,
+                        "showCompletedSteps": true
+                    },
+                    "steps": [
+                        {
+                            "id": "ocr_avis",
+                            "title": "Extract Information from AVIS",
+                            "type": "operation",
+                            "operation": "OCR"
+                        },
+                        {
+                            "id": "validate_avis",
+                            "title": "Validate Extracted Information",
+                            "type": "operation",
+                            "operation": "VALIDATION"
+                        },
+                        {
+                            "id": "siret_validation",
+                            "title": "Validate SIRET",
+                            "type": "operation",
+                            "operation": "SIRET"
+                        },
+                        {
+                            "id": "duplicate_check",
+                            "title": "Check Duplicate Vendor",
+                            "type": "decision",
+                            "operation": "DUPLICATE_CHECK",
+                            "onSuccess": "CONTINUE",
+                            "onDuplicate": "SHOW_DUPLICATE_CARD"
+                        }
+                    ],
+                    "completion": {
+                        "status": "COMPLETED",
+                        "message": "AVIS document processing completed."
+                    }
                 },
                 {
-                    "id": "ocr_avis",
-                    "title": "Extract Information from AVIS",
-                    "type": "operation",
-                    "operation": "OCR"
-                },
-                {
-                    "id": "validate_avis",
-                    "title": "Validate Extracted Information",
-                    "type": "operation",
-                    "operation": "VALIDATION"
-                },
-                {
-                    "id": "siret_validation",
-                    "title": "Validate SIRET",
-                    "type": "operation",
-                    "operation": "SIRET"
-                },
-                {
-                    "id": "duplicate_check",
-                    "title": "Check Duplicate Vendor",
-                    "type": "decision",
-                    "operation": "DUPLICATE_CHECK",
-                    "onDuplicate": "SHOW_DUPLICATE_CARD"
-                },
-                {
-                    "id": "upload_rib",
-                    "title": "Upload RIB Document",
-                    "type": "upload",
-                    "document": "RIB"
-                },
-                {
-                    "id": "ocr_rib",
-                    "title": "Extract Information from RIB",
-                    "type": "operation",
-                    "operation": "OCR"
-                },
-                {
-                    "id": "bank_validation",
-                    "title": "Validate Bank Details",
-                    "type": "operation",
-                    "operation": "BANK"
+                    "id": "process_rib",
+                    "title": "Process RIB Document",
+                    "type": "document",
+                    "document": "RIB",
+                    "upload": {
+                        "title": "Upload RIB Document",
+                        "prompt": "AVIS processing is complete. Please upload the RIB document."
+                    },
+                    "progressCard": {
+                        "title": "RIB Processing",
+                        "updateAfterEachStep": true,
+                        "showCompletedSteps": true
+                    },
+                    "steps": [
+                        {
+                            "id": "ocr_rib",
+                            "title": "Extract Information from RIB",
+                            "type": "operation",
+                            "operation": "OCR"
+                        },
+                        {
+                            "id": "bank_validation",
+                            "title": "Validate Bank Details",
+                            "type": "operation",
+                            "operation": "BANK"
+                        }
+                    ],
+                    "completion": {
+                        "status": "COMPLETED",
+                        "message": "RIB document processing completed."
+                    }
                 },
                 {
                     "id": "vendor_information",
-                    "title": "Collect VAT Number, Email and Phone",
+                    "title": "Vendor Information",
                     "type": "form",
-                    "card": "vendor_information"
+                    "card": "vendor_information",
+                    "prompt": "Document processing is complete. Please provide the remaining vendor information.",
+                    "fields": [
+                        {
+                            "id": "vatNumber",
+                            "label": "VAT Number",
+                            "type": "text",
+                            "required": true,
+                            "placeholder": "Enter VAT number",
+                            "validation": {
+                                "minLength": 2,
+                                "maxLength": 30
+                            }
+                        },
+                        {
+                            "id": "email",
+                            "label": "Email Address",
+                            "type": "email",
+                            "required": true,
+                            "placeholder": "Enter email address"
+                        },
+                        {
+                            "id": "phone",
+                            "label": "Phone Number",
+                            "type": "tel",
+                            "required": true,
+                            "placeholder": "Enter phone number",
+                            "validation": {
+                                "minLength": 7,
+                                "maxLength": 20
+                            }
+                        }
+                    ],
+                    "submit": {
+                        "action": "submit_vendor_information",
+                        "title": "Continue"
+                    }
                 },
                 {
                     "id": "review",
                     "title": "Review & Confirm",
-                    "type": "review"
+                    "type": "review",
+                    "card": "vendor_review",
+                    "actions": [
+                        {
+                            "id": "confirm",
+                            "title": "Confirm",
+                            "action": "confirm_vendor"
+                        },
+                        {
+                            "id": "edit_vendor_information",
+                            "title": "Edit Information",
+                            "action": "edit_vendor_information"
+                        }
+                    ]
                 },
                 {
                     "id": "vendor_creation",
                     "title": "Create Vendor",
                     "type": "operation",
-                    "operation": "CREATE_VENDOR"
+                    "operation": "CREATE_VENDOR",
+                    "progressCard": {
+                        "title": "Creating Vendor",
+                        "updateAfterEachStep": true
+                    }
                 }
             ]
         },
