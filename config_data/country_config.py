@@ -1,17 +1,18 @@
-"""Loads and exposes the workflow configuration.
-
-ConfigService is the single component that reads config_data/countries.json.
-It parses the file into typed models once at construction and serves
-the rest of the application through typed accessor methods, so no other
-component ever handles the raw JSON.
-"""
+"""Loads and exposes the country-driven workflow configuration."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
-from models.country import Country, ProcessStep, WorkflowConfig
+from models.country import (
+    Country,
+    DocumentConfig,
+    ProcessStep,
+    WorkflowConfig,
+    WorkflowStep,
+)
 
 
 class ConfigError(Exception):
@@ -19,47 +20,16 @@ class ConfigError(Exception):
 
 
 class ConfigService:
-    """Loads workflow configuration and serves it as typed models.
-
-    The configuration is read and validated once at construction. All
-    accessors operate on the in-memory WorkflowConfig, so callers pay
-    the file-read cost only at startup.
-    """
+    """Loads workflow configuration and serves typed accessor methods."""
 
     def __init__(self, config_path: str | Path) -> None:
-        """Load and parse the configuration file.
-
-        Args:
-            config_path: Path to the workflow JSON configuration file.
-
-        Raises:
-            ConfigError: If the file is missing, is not valid JSON, or
-                does not match the expected structure.
-        """
         self._path = Path(config_path)
         self._config: WorkflowConfig = self._load()
 
     def _load(self) -> WorkflowConfig:
-        """Read the file and build a validated WorkflowConfig.
+        return self._parse(self._read_file())
 
-        Returns:
-            The parsed configuration.
-
-        Raises:
-            ConfigError: On any read, parse, or structural error.
-        """
-        raw = self._read_file()
-        return self._parse(raw)
-
-    def _read_file(self) -> dict:
-        """Read and JSON-decode the configuration file.
-
-        Returns:
-            The raw configuration as a dictionary.
-
-        Raises:
-            ConfigError: If the file is missing or not valid JSON.
-        """
+    def _read_file(self) -> dict[str, Any]:
         if not self._path.is_file():
             raise ConfigError(f"Config file not found: {self._path}")
         try:
@@ -68,99 +38,96 @@ class ConfigService:
         except json.JSONDecodeError as error:
             raise ConfigError(f"Invalid JSON in {self._path}: {error}") from error
 
-    def _parse(self, raw: dict) -> WorkflowConfig:
-        """Convert a raw config dict into a typed WorkflowConfig.
-
-        Args:
-            raw: The decoded JSON dictionary.
-
-        Returns:
-            The typed, validated configuration.
-
-        Raises:
-            ConfigError: If required keys are missing or malformed.
-        """
+    def _parse(self, raw: dict[str, Any]) -> WorkflowConfig:
         try:
             countries = {
-                name: Country(name=name, documents=list(body["documents"]))
+                name: self._parse_country(name, body)
                 for name, body in raw["countries"].items()
             }
-            operations = list(raw["operations"])
-            process = [
-                ProcessStep(id=step["id"], title=step["title"])
-                for step in raw["process"]
-            ]
+            registry = dict(raw.get("operationRegistry", {}))
         except (KeyError, TypeError) as error:
             raise ConfigError(f"Malformed configuration: {error}") from error
 
         if not countries:
             raise ConfigError("Configuration defines no countries.")
-        if not operations:
-            raise ConfigError("Configuration defines no operations.")
-        if not process:
-            raise ConfigError("Configuration defines no process steps.")
-
-        delay = raw.get("simulation", {}).get("step_delay_seconds", 2.0)
         return WorkflowConfig(
             countries=countries,
-            operations=operations,
-            process=process,
-            step_delay_seconds=float(delay),
+            operations=list(raw.get("operations", ["Create"])),
+            operation_registry=registry,
+            step_delay_seconds=float(
+                raw.get("simulation", {}).get("step_delay_seconds", 0.0)
+            ),
+        )
+
+    def _parse_country(self, name: str, body: dict[str, Any]) -> Country:
+        documents = [
+            DocumentConfig(
+                document_type=item["documentType"],
+                display_name=item.get("displayName", item["documentType"]),
+                operations=list(item.get("operations", [])),
+                min_files=int(item.get("minFiles", 1)),
+                allow_multiple=bool(item.get("allowMultiple", False)),
+            )
+            for item in body.get("documents", [])
+        ]
+        workflow = [
+            WorkflowStep(
+                id=step["id"],
+                title=step["title"],
+                type=step["type"],
+                document=step.get("document"),
+                operation=step.get("operation"),
+                card=step.get("card"),
+                options={
+                    k: v
+                    for k, v in step.items()
+                    if k
+                    not in {"id", "title", "type", "document", "operation", "card"}
+                },
+            )
+            for step in body.get("workflow", [])
+        ]
+        if not workflow:
+            raise ConfigError(f"Country has no workflow: {name}")
+        return Country(
+            name=name,
+            country_code=body.get("countryCode", ""),
+            currency=body.get("currency", ""),
+            documents=documents,
+            workflow=workflow,
         )
 
     def get_countries(self) -> list[str]:
-        """Return all country display names, in configured order.
-
-        Returns:
-            The list of country names.
-        """
         return list(self._config.countries.keys())
 
     def get_country(self, name: str) -> Country | None:
-        """Return a single country by display name.
-
-        Args:
-            name: The country display name.
-
-        Returns:
-            The matching Country, or None if not found.
-        """
         return self._config.get_country(name)
 
     def get_documents(self, name: str) -> list[str]:
-        """Return the required documents for a country.
+        country = self._require_country(name)
+        return [document.document_type for document in country.documents]
 
-        Args:
-            name: The country display name.
+    def get_operations(self) -> list[str]:
+        return list(self._config.operations)
 
-        Returns:
-            The document types for that country.
+    def get_workflow(self, name: str) -> list[WorkflowStep]:
+        return list(self._require_country(name).workflow)
 
-        Raises:
-            ConfigError: If the country is not configured.
-        """
+    def get_process(self, name: str | None = None) -> list[ProcessStep]:
+        if name is None:
+            first_country = next(iter(self._config.countries))
+            name = first_country
+        return [
+            ProcessStep(id=step.id, title=step.title)
+            for step in self.get_workflow(name)
+        ]
+
+    def _require_country(self, name: str) -> Country:
         country = self._config.get_country(name)
         if country is None:
             raise ConfigError(f"Unknown country: {name}")
-        return list(country.documents)
-
-    def get_operations(self) -> list[str]:
-        """Return all operation labels, in configured order.
-
-        Returns:
-            The list of operation labels.
-        """
-        return list(self._config.operations)
-
-    def get_process(self) -> list[ProcessStep]:
-        """Return the ordered process steps.
-
-        Returns:
-            The list of process steps driving the simulation.
-        """
-        return list(self._config.process)
+        return country
 
     @property
     def step_delay_seconds(self) -> float:
-        """The configured delay between simulated process steps."""
         return self._config.step_delay_seconds

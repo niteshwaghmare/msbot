@@ -384,6 +384,11 @@
             ]
         }
     },
+    "operations": [
+        "Create",
+        "Request Check",
+        "Existence Check"
+    ],
     "operationRegistry": {
         "OCR": "ocr_service",
         "VALIDATION": "validation_service",

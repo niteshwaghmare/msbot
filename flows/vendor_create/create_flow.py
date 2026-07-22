@@ -20,9 +20,8 @@ from cards.country_select_card import CountryCard
 from cards.operation_card import OperationCard
 from cards.progress_card import ProgressCard
 from cards.document_upload_card import UploadCard
-from models.progress import ProgressState
+from models.progress import ProgressState, ProgressStep
 from config_data.country_config import ConfigService
-from services.progress_service import ProgressService
 from flows.vendor_create.document_collector import WorkflowService
 from models.workflow import WorkflowPhase
 from utils.logging import activity_log_details, get_logger
@@ -130,6 +129,12 @@ class WorkflowController:
             MessageFactory.text(f"Country selected: {country}")
         )
         card = OperationCard.render(self._config.get_operations(), country)
+        LOGGER.info(
+            "Showing operation selection country=%s operation_count=%s",
+            country,
+            len(self._config.get_operations()),
+            extra=activity_log_details(turn_context),
+        )
         await turn_context.send_activity(MessageFactory.attachment(card))
 
     async def handle_operation(
@@ -252,25 +257,30 @@ class WorkflowController:
     async def _begin_processing(
         self, turn_context: TurnContext, session: Session
     ) -> None:
-        """Transition to processing and run the simulation in the background.
+        """Transition to processing and run the configured workflow.
 
         Sends the initial progress card, captures its activity id for
-        in-place updates, then launches the FakeProcessor as a background
-        task so the turn returns promptly rather than blocking for the
-        full simulation.
+        in-place updates, then launches the config-driven processor as a
+        background task so the turn returns promptly.
 
         Args:
             turn_context: The current turn context.
             session: The session being processed.
         """
         LOGGER.info("Processing started", extra=activity_log_details(turn_context))
-        session.workflow.submit_documents()
+        workflow = session.workflow
+        workflow.submit_documents()
 
-        progress_service = ProgressService(self._config.get_process())
+        initial_progress = ProgressState(
+            steps=[
+                ProgressStep(id=step.id, title=step.title)
+                for step in self._config.get_process(workflow.get_state().country)
+            ]
+        )
 
         # Send the first progress card and remember its id so every later
         # render updates this same message instead of posting a new one.
-        first_card = ProgressCard.render(progress_service.state)
+        first_card = ProgressCard.render(initial_progress)
         sent = await turn_context.send_activity(MessageFactory.attachment(first_card))
         session.progress_activity_id = sent.id
         LOGGER.info(
@@ -297,19 +307,33 @@ class WorkflowController:
             )
 
         # Import here to avoid a circular import at module load time.
-        from processors.vendor_processor import FakeProcessor
+        from core.document_processor import DocumentProcessor
 
-        processor = FakeProcessor(
-            progress_service,
-            on_update,
-            step_delay_seconds=self._config.step_delay_seconds,
-        )
+        processor = DocumentProcessor(self._config)
 
         # Run without blocking the turn. On completion, mark the workflow
         # complete so the session reflects the finished state.
         async def _run_and_finalise() -> None:
-            await processor.run()
-            session.workflow.complete()
+            try:
+                state = session.workflow.get_state()
+                uploaded_files = {
+                    document: value
+                    for document, value in zip(
+                        workflow.get_documents(), state.collected_documents
+                    )
+                }
+                if state.country is None:
+                    raise RuntimeError("Cannot process without a selected country.")
+                await processor.process(state.country, uploaded_files, on_update)
+                session.workflow.complete()
+            except Exception:
+                await turn_context.send_activity(
+                    MessageFactory.text(
+                        "Sorry, something went wrong while processing your onboarding workflow. "
+                        "Please try again or contact support if the issue continues."
+                    )
+                )
+                return
             LOGGER.info(
                 "Processing completed progress_activity_id=%s",
                 session.progress_activity_id or "-",

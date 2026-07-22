@@ -1,1 +1,5 @@
-"""Placeholder module for the reorganized vendor bot layout."""
+"""Compatibility import for the configuration-driven document processor."""
+
+from core.document_processor import DocumentProcessor
+
+__all__ = ["DocumentProcessor"]
