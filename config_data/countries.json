@@ -1,31 +1,397 @@
 {
     "countries": {
         "France": {
-            "documents": ["RBIS", "AVIS"]
+            "countryCode": "FR",
+            "currency": "EUR",
+            "documents": [
+                {
+                    "documentType": "AVIS",
+                    "displayName": "AVIS",
+                    "minFiles": 1,
+                    "allowMultiple": false,
+                    "operations": [
+                        "OCR",
+                        "VALIDATION",
+                        "SIRET"
+                    ]
+                },
+                {
+                    "documentType": "RIB",
+                    "displayName": "RIB",
+                    "minFiles": 1,
+                    "allowMultiple": false,
+                    "operations": [
+                        "OCR",
+                        "BANK"
+                    ]
+                }
+            ],
+            "workflow": [
+                {
+                    "id": "upload_avis",
+                    "title": "Upload AVIS Document",
+                    "type": "upload",
+                    "document": "AVIS"
+                },
+                {
+                    "id": "ocr_avis",
+                    "title": "Extract Information from AVIS",
+                    "type": "operation",
+                    "operation": "OCR"
+                },
+                {
+                    "id": "validate_avis",
+                    "title": "Validate Extracted Information",
+                    "type": "operation",
+                    "operation": "VALIDATION"
+                },
+                {
+                    "id": "siret_validation",
+                    "title": "Validate SIRET",
+                    "type": "operation",
+                    "operation": "SIRET"
+                },
+                {
+                    "id": "duplicate_check",
+                    "title": "Check Duplicate Vendor",
+                    "type": "decision",
+                    "operation": "DUPLICATE_CHECK",
+                    "onDuplicate": "SHOW_DUPLICATE_CARD"
+                },
+                {
+                    "id": "upload_rib",
+                    "title": "Upload RIB Document",
+                    "type": "upload",
+                    "document": "RIB"
+                },
+                {
+                    "id": "ocr_rib",
+                    "title": "Extract Information from RIB",
+                    "type": "operation",
+                    "operation": "OCR"
+                },
+                {
+                    "id": "bank_validation",
+                    "title": "Validate Bank Details",
+                    "type": "operation",
+                    "operation": "BANK"
+                },
+                {
+                    "id": "vendor_information",
+                    "title": "Collect VAT Number, Email and Phone",
+                    "type": "form",
+                    "card": "vendor_information"
+                },
+                {
+                    "id": "review",
+                    "title": "Review & Confirm",
+                    "type": "review"
+                },
+                {
+                    "id": "vendor_creation",
+                    "title": "Create Vendor",
+                    "type": "operation",
+                    "operation": "CREATE_VENDOR"
+                }
+            ]
         },
         "Germany": {
-            "documents": ["VAT", "HRB"]
+            "countryCode": "DE",
+            "currency": "EUR",
+            "documents": [
+                {
+                    "documentType": "VAT",
+                    "displayName": "VAT",
+                    "minFiles": 1,
+                    "allowMultiple": false,
+                    "operations": [
+                        "OCR",
+                        "TIN"
+                    ]
+                },
+                {
+                    "documentType": "HRB",
+                    "displayName": "HRB",
+                    "minFiles": 1,
+                    "allowMultiple": false,
+                    "operations": [
+                        "OCR",
+                        "VALIDATION"
+                    ]
+                }
+            ],
+            "workflow": [
+                {
+                    "id": "upload_vat",
+                    "title": "Upload VAT Certificate",
+                    "type": "upload",
+                    "document": "VAT"
+                },
+                {
+                    "id": "ocr_vat",
+                    "title": "Extract Information from VAT Certificate",
+                    "type": "operation",
+                    "operation": "OCR"
+                },
+                {
+                    "id": "tin_validation",
+                    "title": "Validate VAT / Tax Registration",
+                    "type": "operation",
+                    "operation": "TIN"
+                },
+                {
+                    "id": "duplicate_check",
+                    "title": "Check Duplicate Vendor",
+                    "type": "decision",
+                    "operation": "DUPLICATE_CHECK",
+                    "onDuplicate": "SHOW_DUPLICATE_CARD"
+                },
+                {
+                    "id": "upload_hrb",
+                    "title": "Upload HRB Registration Document",
+                    "type": "upload",
+                    "document": "HRB"
+                },
+                {
+                    "id": "ocr_hrb",
+                    "title": "Extract Information from HRB",
+                    "type": "operation",
+                    "operation": "OCR"
+                },
+                {
+                    "id": "validate_hrb",
+                    "title": "Validate Company Registration",
+                    "type": "operation",
+                    "operation": "VALIDATION"
+                },
+                {
+                    "id": "vendor_information",
+                    "title": "Collect Bank Details, Email & Phone",
+                    "type": "form",
+                    "card": "vendor_information"
+                },
+                {
+                    "id": "review",
+                    "title": "Review & Confirm",
+                    "type": "review"
+                },
+                {
+                    "id": "vendor_creation",
+                    "title": "Create Vendor",
+                    "type": "operation",
+                    "operation": "CREATE_VENDOR"
+                }
+            ]
         },
         "USA": {
-            "documents": ["VAT", "RBIS", "AVIS"]
+            "countryCode": "US",
+            "currency": "USD",
+            "documents": [
+                {
+                    "documentType": "VAT",
+                    "displayName": "VAT",
+                    "operations": [
+                        "OCR",
+                        "TIN"
+                    ]
+                },
+                {
+                    "documentType": "RIB",
+                    "displayName": "Bank Details",
+                    "operations": [
+                        "OCR",
+                        "BANK"
+                    ]
+                },
+                {
+                    "documentType": "AVIS",
+                    "displayName": "AVIS",
+                    "operations": [
+                        "OCR",
+                        "VALIDATION"
+                    ]
+                }
+            ],
+            "workflow": [
+                {
+                    "id": "upload_avis",
+                    "title": "Upload Business Registration Document",
+                    "type": "upload",
+                    "document": "AVIS"
+                },
+                {
+                    "id": "ocr_avis",
+                    "title": "Extract Business Information",
+                    "type": "operation",
+                    "operation": "OCR"
+                },
+                {
+                    "id": "validate_business",
+                    "title": "Validate Business Information",
+                    "type": "operation",
+                    "operation": "VALIDATION"
+                },
+                {
+                    "id": "duplicate_check",
+                    "title": "Check Duplicate Vendor",
+                    "type": "decision",
+                    "operation": "DUPLICATE_CHECK",
+                    "onDuplicate": "SHOW_DUPLICATE_CARD"
+                },
+                {
+                    "id": "upload_bank",
+                    "title": "Upload Bank Document",
+                    "type": "upload",
+                    "document": "RIB"
+                },
+                {
+                    "id": "ocr_bank",
+                    "title": "Extract Bank Information",
+                    "type": "operation",
+                    "operation": "OCR"
+                },
+                {
+                    "id": "bank_validation",
+                    "title": "Validate Bank Account",
+                    "type": "operation",
+                    "operation": "BANK"
+                },
+                {
+                    "id": "upload_tax",
+                    "title": "Upload Tax Registration Document",
+                    "type": "upload",
+                    "document": "VAT"
+                },
+                {
+                    "id": "ocr_tax",
+                    "title": "Extract Tax Information",
+                    "type": "operation",
+                    "operation": "OCR"
+                },
+                {
+                    "id": "tax_validation",
+                    "title": "Validate Tax Registration",
+                    "type": "operation",
+                    "operation": "TIN"
+                },
+                {
+                    "id": "vendor_information",
+                    "title": "Collect Contact Details",
+                    "type": "form",
+                    "card": "vendor_information"
+                },
+                {
+                    "id": "review",
+                    "title": "Review & Confirm",
+                    "type": "review"
+                },
+                {
+                    "id": "vendor_creation",
+                    "title": "Create Vendor",
+                    "type": "operation",
+                    "operation": "CREATE_VENDOR"
+                }
+            ]
         },
         "India": {
-            "documents": ["GST", "PAN"]
+            "countryCode": "IN",
+            "currency": "INR",
+            "documents": [
+                {
+                    "documentType": "GST",
+                    "displayName": "GST Certificate",
+                    "operations": [
+                        "OCR",
+                        "GST"
+                    ]
+                },
+                {
+                    "documentType": "PAN",
+                    "displayName": "PAN Card",
+                    "operations": [
+                        "OCR",
+                        "VALIDATION"
+                    ]
+                }
+            ],
+            "workflow": [
+                {
+                    "id": "upload_gst",
+                    "title": "Upload GST Certificate",
+                    "type": "upload",
+                    "document": "GST"
+                },
+                {
+                    "id": "ocr_gst",
+                    "title": "Extract GST Information",
+                    "type": "operation",
+                    "operation": "OCR"
+                },
+                {
+                    "id": "gst_validation",
+                    "title": "Validate GST Registration",
+                    "type": "operation",
+                    "operation": "GST"
+                },
+                {
+                    "id": "duplicate_check",
+                    "title": "Check Duplicate Vendor",
+                    "type": "decision",
+                    "operation": "DUPLICATE_CHECK",
+                    "onDuplicate": "SHOW_DUPLICATE_CARD"
+                },
+                {
+                    "id": "upload_pan",
+                    "title": "Upload PAN Card",
+                    "type": "upload",
+                    "document": "PAN"
+                },
+                {
+                    "id": "ocr_pan",
+                    "title": "Extract PAN Information",
+                    "type": "operation",
+                    "operation": "OCR"
+                },
+                {
+                    "id": "pan_validation",
+                    "title": "Validate PAN Details",
+                    "type": "operation",
+                    "operation": "VALIDATION"
+                },
+                {
+                    "id": "vendor_information",
+                    "title": "Collect Bank Details, Email & Phone",
+                    "type": "form",
+                    "card": "vendor_information"
+                },
+                {
+                    "id": "bank_validation",
+                    "title": "Validate Bank Account",
+                    "type": "operation",
+                    "operation": "BANK"
+                },
+                {
+                    "id": "review",
+                    "title": "Review & Confirm",
+                    "type": "review"
+                },
+                {
+                    "id": "vendor_creation",
+                    "title": "Create Vendor",
+                    "type": "operation",
+                    "operation": "CREATE_VENDOR"
+                }
+            ]
         }
     },
-    "operations": [
-        "Create",
-        "Request Check",
-        "Existence Check"
-    ],
-    "process": [
-        { "id": "extract",   "title": "Extracting Information" },
-        { "id": "validate",  "title": "Validating Details" },
-        { "id": "dedupe",    "title": "Checking for Duplicates" },
-        { "id": "bank",      "title": "Checking Bank Details" },
-        { "id": "sanctions", "title": "Running Sanctions Screening" },
-        { "id": "tax",       "title": "Verifying Tax Registration" },
-        { "id": "approval",  "title": "Awaiting Internal Approval" },
-        { "id": "vendor",    "title": "Creating Vendor" }
-    ]
+    "operationRegistry": {
+        "OCR": "ocr_service",
+        "VALIDATION": "validation_service",
+        "SIRET": "siret_service",
+        "TIN": "tin_service",
+        "BANK": "bank_service",
+        "GST": "gst_service",
+        "CREATE_VENDOR": "vendor_service",
+        "DUPLICATE_CHECK": "duplicate_service"
+    }
 }

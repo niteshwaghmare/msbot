@@ -1,7 +1,7 @@
 from core.base_operations import BaseOperation
 
 
-class ValidationService(BaseOperation):
+class GSTService(BaseOperation):
 
     async def execute(self, context):
-        print("Running Validation Service")
+        print("Running GST Service")

@@ -126,6 +126,9 @@ class WorkflowController:
             extra=activity_log_details(turn_context),
         )
         session.workflow.select_country(country)
+        await turn_context.send_activity(
+            MessageFactory.text(f"Country selected: {country}")
+        )
         card = OperationCard.render(self._config.get_operations(), country)
         await turn_context.send_activity(MessageFactory.attachment(card))
 
@@ -149,6 +152,9 @@ class WorkflowController:
             extra=activity_log_details(turn_context),
         )
         workflow.select_operation(operation)
+        await turn_context.send_activity(
+            MessageFactory.text(f"Operation selected: {operation}")
+        )
 
         if workflow.requires_documents():
             workflow.begin_document_collection()
