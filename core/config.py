@@ -23,9 +23,9 @@ class RedisSettings:
     username: str | None = (
         os.getenv("REDIS__USERNAME", os.getenv("REDIS_USERNAME")) or None
     )
-    password: SecretValue | None = (
-        SecretValue(os.getenv("REDIS__PASSWORD", os.getenv("REDIS_PASSWORD", "")))
-        if os.getenv("REDIS__PASSWORD", os.getenv("REDIS_PASSWORD"))
+    key: SecretValue | None = (
+        SecretValue(os.getenv("REDIS__KEY", os.getenv("REDIS_KEY", "")))
+        if os.getenv("REDIS__KEY", os.getenv("REDIS_KEY"))
         else None
     )
     ssl: bool = os.getenv("REDIS__SSL", os.getenv("REDIS_SSL", "false")).lower() in {
