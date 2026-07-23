@@ -49,7 +49,11 @@ DEFAULT_SESSION: dict[str, Any] = {
 
     "country": None,
     "country_name": None,
+    "country_code": None,
     "currency": None,
+
+    "available_countries": [],
+    "available_operations": [],
 
     "user_language": "en",
     "language_confirmed": False,
@@ -87,6 +91,22 @@ DEFAULT_SESSION: dict[str, Any] = {
         "run_document_validation": True,
         "run_bank_validation": False,
         "save_vendor_to_database": True,
+    },
+
+    "workflow_state": {
+        "phase": "start",
+        "country": None,
+        "operation": None,
+        "current_document": None,
+        "collected_documents": [],
+        "progress": None,
+        "current_workflow_index": 0,
+        "workflow_status": "STARTED",
+        "waiting_for": None,
+        "documents": {},
+        "form_data": {},
+        "review_confirmed": False,
+        "vendor_created": False,
     },
 
     "validation": {
@@ -184,6 +204,7 @@ class SessionFactory:
 
         session["country"] = country_code
         session["country_name"] = country_config.get("countryName")
+        session["country_code"] = country_config.get("countryCode", country_code)
         session["currency"] = country_config.get("currency")
         session["user_language"] = country_config.get(
             "defaultLanguage",

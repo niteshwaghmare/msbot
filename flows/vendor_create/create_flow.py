@@ -98,9 +98,72 @@ class WorkflowController:
         """Persist the current workflow session for this conversation."""
         conversation_id = turn_context.activity.conversation.id
         stored_session = session_service.get_session(conversation_id)
-        stored_session["workflow_state"] = session.workflow.to_dict()
+        self._sync_session_snapshot(stored_session, session)
         stored_session["last_activity_id"] = session.progress_activity_id
         session_service.save_session(conversation_id, stored_session)
+
+    def _sync_session_snapshot(
+        self, stored_session: dict[str, object], session: Session
+    ) -> None:
+        """Copy the live workflow state and config metadata into Redis state."""
+        workflow_state = session.workflow.to_dict()
+        state = session.workflow.get_state()
+        country = self._config.get_country(state.country) if state.country else None
+        current_step_id = None
+        if (
+            country
+            and state.phase not in {WorkflowPhase.COMPLETED, WorkflowPhase.FAILED}
+            and state.current_workflow_index < len(country.workflow)
+        ):
+            current_step_id = country.workflow[state.current_workflow_index].id
+
+        stored_session["available_countries"] = self._config.get_countries()
+        stored_session["available_operations"] = self._config.get_operations()
+        stored_session["workflow_state"] = workflow_state
+        stored_session["workflow"] = {
+            **dict(stored_session.get("workflow") or {}),
+            "stage": workflow_state.get("phase"),
+            "current_step": current_step_id,
+            "completed_steps": [
+                step_id
+                for document in state.documents.values()
+                for step_id, status in document.steps.items()
+                if status == "COMPLETED"
+            ],
+            "status": workflow_state.get("workflow_status"),
+            "waiting_for": workflow_state.get("waiting_for"),
+        }
+
+        if not state.country:
+            return
+
+        if country is None:
+            return
+
+        stored_session["country"] = country.name
+        stored_session["country_name"] = country.name
+        stored_session["country_code"] = country.country_code
+        stored_session["currency"] = country.currency
+        stored_session.setdefault("vendor", {})["country"] = country.country_code
+        stored_session["documents"] = {
+            document.document_type: {
+                "document_type": document.document_type,
+                "display_name": document.display_name,
+                "required": document.required,
+                "allow_multiple": document.allow_multiple,
+                "min_files": document.min_files,
+                "max_files": document.max_files,
+                "allowed_extensions": document.allowed_extensions,
+                "operations": document.operations,
+                "files": workflow_state.get("documents", {})
+                .get(document.document_type, {})
+                .get("files", []),
+                "status": workflow_state.get("documents", {})
+                .get(document.document_type, {})
+                .get("status", "PENDING"),
+            }
+            for document in country.documents
+        }
 
     @staticmethod
     def _is_local_environment() -> bool:
