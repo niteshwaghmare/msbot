@@ -23,9 +23,10 @@ from cards.review_card import ReviewCard
 from models.progress import ProgressState, StepStatus
 from config_data.country_config import ConfigService
 from services.progress_service import ProgressService
+from services.session_service import session_service
 from flows.vendor_create.document_collector import WorkflowService, WorkflowError
 from models.workflow import WorkflowPhase
-from utils.logging import activity_log_details, get_logger
+from core.logging import activity_log_details, get_logger
 from core.operation_factory import OperationFactory
 from core.document_processor import ProcessingContext
 from models.workflow import DocumentStatus
@@ -57,18 +58,17 @@ class WorkflowController:
     database in Phase 2.
     """
     def __init__(self, config: ConfigService, app_id: str = "") -> None:
-            """Initialise the controller.
+        """Initialise the controller.
 
-            Args:
-                config: The shared configuration service.
-                app_id: The bot's Microsoft App Id, required to resume a
-                    conversation from a background task. Empty is valid for
-                    the local Emulator.
-            """
-            self._config = config
-            self._app_id = app_id
-            # Phase 2: replace this dict with a distributed/persistent store.
-            self._sessions: dict[str, Session] = {}
+        Args:
+            config: The shared configuration service.
+            app_id: The bot's Microsoft App Id, required to resume a
+                conversation from a background task. Empty is valid for
+                the local Emulator.
+        """
+        self._config = config
+        self._app_id = app_id
+
     # --- Session management ------------------------------------------------
 
     def _session(self, turn_context: TurnContext) -> Session:
@@ -81,15 +81,26 @@ class WorkflowController:
             The Session for the conversation.
         """
         conversation_id = turn_context.activity.conversation.id
-        session = self._sessions.get(conversation_id)
-        if session is None:
-            session = Session(workflow=WorkflowService(self._config))
-            self._sessions[conversation_id] = session
-            LOGGER.info(
-                "Created workflow session",
-                extra=activity_log_details(turn_context),
-            )
+        stored_session = session_service.get_session(conversation_id)
+        workflow = WorkflowService(self._config)
+        workflow.load_dict(stored_session.get("workflow_state"))
+        session = Session(
+            workflow=workflow,
+            progress_activity_id=stored_session.get("last_activity_id"),
+        )
+        LOGGER.info(
+            "Loaded workflow session",
+            extra=activity_log_details(turn_context),
+        )
         return session
+
+    def _save_session(self, turn_context: TurnContext, session: Session) -> None:
+        """Persist the current workflow session for this conversation."""
+        conversation_id = turn_context.activity.conversation.id
+        stored_session = session_service.get_session(conversation_id)
+        stored_session["workflow_state"] = session.workflow.to_dict()
+        stored_session["last_activity_id"] = session.progress_activity_id
+        session_service.save_session(conversation_id, stored_session)
 
     @staticmethod
     def _is_local_environment() -> bool:
@@ -112,6 +123,7 @@ class WorkflowController:
         )
         session.workflow.start_workflow()
         session.progress_activity_id = None
+        self._save_session(turn_context, session)
         card = CountryCard.render(self._config.get_countries())
         await turn_context.send_activity(MessageFactory.attachment(card))
 
@@ -129,6 +141,7 @@ class WorkflowController:
             extra=activity_log_details(turn_context),
         )
         session.workflow.select_country(country)
+        self._save_session(turn_context, session)
         await turn_context.send_activity(
             MessageFactory.text(f"Country selected: {country}")
         )
@@ -155,12 +168,14 @@ class WorkflowController:
             extra=activity_log_details(turn_context),
         )
         workflow.select_operation(operation)
+        self._save_session(turn_context, session)
         await turn_context.send_activity(
             MessageFactory.text(f"Operation selected: {operation}")
         )
 
         if workflow.requires_documents():
             workflow.begin_document_collection()
+            self._save_session(turn_context, session)
             await self._send_current_step(turn_context, session)
         else:
             await self._begin_processing(turn_context, session)
@@ -180,6 +195,7 @@ class WorkflowController:
             return
         try:
             workflow.submit_document(document_value)
+            self._save_session(turn_context, session)
         except WorkflowError as error:
             await turn_context.send_activity(str(error))
             return
@@ -197,6 +213,7 @@ class WorkflowController:
             card = DetailsFormCard.render(step, session.workflow.get_state().form_data, errors)
             await turn_context.send_activity(MessageFactory.attachment(card))
             return
+        self._save_session(turn_context, session)
         await self._send_current_step(turn_context, session)
 
     async def handle_review_action(
@@ -207,6 +224,7 @@ class WorkflowController:
         action = payload.get("action")
         if action == "edit_vendor_information":
             session.workflow.edit_form()
+            self._save_session(turn_context, session)
             await self._send_current_step(turn_context, session)
             return
         if action == "confirm_vendor" and session.workflow.confirm_review():
@@ -276,6 +294,7 @@ class WorkflowController:
         if not document_state.progress_activity_id:
             sent = await turn_context.send_activity(MessageFactory.attachment(ProgressCard.render(progress_service.state, title)))
             document_state.progress_activity_id = sent.id
+            self._save_session(turn_context, session)
         await self._update_progress_card(turn_context, document_state.progress_activity_id, progress_service.state, title)
         context = ProcessingContext(selected_country=state.country or "", uploaded_files={document_type: document_state.files[0]}, document_type=document_type, uploaded_file=document_state.files[0])
         for index, nested in enumerate(workflow_step.raw.get("steps", [])):
@@ -285,6 +304,7 @@ class WorkflowController:
             progress_service.state.steps[index].status = StepStatus.RUNNING
             document_state.current_step_index = index
             document_state.steps[nested["id"]] = "IN_PROGRESS"
+            self._save_session(turn_context, session)
             await self._update_progress_card(turn_context, document_state.progress_activity_id, progress_service.state, title)
             try:
                 operation = OperationFactory.get(nested["operation"])
@@ -294,18 +314,21 @@ class WorkflowController:
                 document_state.results[nested["id"]] = self._operation_result(context, nested["operation"])
                 document_state.steps[nested["id"]] = "COMPLETED"
                 progress_service.state.steps[index].status = StepStatus.COMPLETED
+                self._save_session(turn_context, session)
                 await self._update_progress_card(turn_context, document_state.progress_activity_id, progress_service.state, title)
             except Exception as error:
                 LOGGER.exception("Document operation failed step_id=%s", nested.get("id"))
                 document_state.steps[nested["id"]] = "FAILED"
                 progress_service.state.steps[index].status = StepStatus.FAILED
                 session.workflow.fail_document("Document processing failed. Please try again or contact support.")
+                self._save_session(turn_context, session)
                 await self._update_progress_card(turn_context, document_state.progress_activity_id, progress_service.state, title)
                 await turn_context.send_activity("Document processing failed. Please try again or contact support.")
                 return
         progress_service.complete()
         await self._update_progress_card(turn_context, document_state.progress_activity_id, progress_service.state, title)
         session.workflow.complete_document()
+        self._save_session(turn_context, session)
 
     async def _update_progress_card(self, turn_context: TurnContext, activity_id: str | None, state: ProgressState, title: str | None) -> None:
         """Update an existing progress activity in place."""
@@ -324,6 +347,7 @@ class WorkflowController:
         context = ProcessingContext(selected_country=session.workflow.get_state().country or "")
         await OperationFactory.get(step.operation or "CREATE_VENDOR").execute(context)
         session.workflow.complete()
+        self._save_session(turn_context, session)
         await turn_context.send_activity("Vendor created successfully.")
 
     @staticmethod

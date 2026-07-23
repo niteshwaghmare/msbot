@@ -363,7 +363,6 @@ class SessionFactory:
                     )
 
     @staticmethod
-    @staticmethod
     def _clear_volatile_fields(
         session: dict[str, Any],
     ) -> None:

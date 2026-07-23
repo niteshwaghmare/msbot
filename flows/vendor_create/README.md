@@ -38,5 +38,5 @@ The `vendor_create` flow guides the user through a multi-step onboarding process
 
 - The flow uses `ConfigService` to validate countries, operations, and required documents.
 - Document collection is currently only required for operations in `_OPERATIONS_REQUIRING_DOCUMENTS`.
-- Session state is held in-memory in `WorkflowController._sessions`.
+- Session state is persisted through `services.session_service` using Redis-backed storage.
 - The processing path uses `ProgressService` and `processors.vendor_processor.FakeProcessor`.

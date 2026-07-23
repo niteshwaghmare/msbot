@@ -17,7 +17,7 @@ from cards.document_upload_card import ACTION_SUBMIT_DOCUMENTS
 from cards.details_form_card import ACTION_SUBMIT_VENDOR_INFORMATION
 from cards.review_card import ACTION_CONFIRM_VENDOR, ACTION_EDIT_VENDOR_INFORMATION
 from flows.vendor_create.create_flow import WorkflowController
-from utils.logging import activity_log_details, get_logger
+from core.logging import activity_log_details, get_logger
 
 
 LOGGER = get_logger(__name__)

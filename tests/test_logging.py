@@ -3,7 +3,7 @@ import os
 import tempfile
 import unittest
 
-from utils.logging import configure_logging, get_logger
+from core.logging import configure_logging, get_logger
 
 
 class LoggingConfigurationTests(unittest.TestCase):

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+from dataclasses import asdict
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -222,6 +224,61 @@ class WorkflowService:
             return False
         self._state.vendor_created = True
         return True
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the workflow state for Redis-backed session storage."""
+        return self._serialize_value(asdict(self._state))
+
+    def load_dict(self, data: dict[str, Any] | None) -> WorkflowState:
+        """Restore workflow state from Redis-backed session storage."""
+        if not data:
+            self._state = WorkflowState()
+            return self._state
+
+        documents = {
+            document_type: DocumentWorkflowState(
+                status=DocumentStatus(
+                    document_data.get("status", DocumentStatus.PENDING)
+                ),
+                files=list(document_data.get("files", [])),
+                progress_activity_id=document_data.get("progress_activity_id"),
+                current_step_index=int(document_data.get("current_step_index", 0)),
+                steps=dict(document_data.get("steps", {})),
+                results=dict(document_data.get("results", {})),
+                error_message=document_data.get("error_message"),
+            )
+            for document_type, document_data in data.get("documents", {}).items()
+        }
+        phase = WorkflowPhase(data.get("phase", WorkflowPhase.START))
+        waiting_for = data.get("waiting_for")
+        self._state = WorkflowState(
+            phase=phase,
+            country=data.get("country"),
+            operation=data.get("operation"),
+            current_document=data.get("current_document"),
+            collected_documents=list(data.get("collected_documents", [])),
+            current_workflow_index=int(data.get("current_workflow_index", 0)),
+            workflow_status=data.get("workflow_status", "STARTED"),
+            waiting_for=WaitingFor(waiting_for) if waiting_for else None,
+            documents=documents,
+            form_data=dict(data.get("form_data", {})),
+            review_confirmed=bool(data.get("review_confirmed", False)),
+            vendor_created=bool(data.get("vendor_created", False)),
+        )
+        return self._state
+
+    @staticmethod
+    def _serialize_value(value: Any) -> Any:
+        if isinstance(value, Enum):
+            return value.value
+        if isinstance(value, dict):
+            return {
+                key: WorkflowService._serialize_value(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [WorkflowService._serialize_value(item) for item in value]
+        return value
 
     def get_state(self) -> WorkflowState:
         """Return the current workflow state."""
