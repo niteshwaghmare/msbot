@@ -60,13 +60,14 @@ class DemoActivityHandler(ActivityHandler):
         members_added: list[ChannelAccount],
         turn_context: TurnContext,
     ) -> None:
-        """Show the country card to each newly added user.
+        """Wait for the user's first message before starting a session.
 
         Args:
             members_added: Accounts that just joined the conversation.
             turn_context: The current turn context.
         """
-        for member in members_added:
-            if member.id != turn_context.activity.recipient.id:
-                # No payload: the router starts the flow at the country card.
-                await self._router.route(turn_context, None)
+        LOGGER.info(
+            "Members added; deferring session creation until first user message count=%s",
+            len(members_added),
+            extra=activity_log_details(turn_context),
+        )
