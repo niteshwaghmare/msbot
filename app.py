@@ -13,9 +13,10 @@ from botbuilder.integration.aiohttp import CloudAdapter, ConfigurationBotFramewo
 from botbuilder.schema import Activity
 
 from bot.demo_bot import DemoBot
+from services.redis_service import redis_service
 
 from config import BotConfig, DEFAULT_HOST, DEFAULT_PORT
-from utils.logging import (
+from core.logging import (
     activity_details_from_activity,
     activity_log_details,
     configure_logging,
@@ -77,6 +78,16 @@ async def messages(req: Request) -> Response:
     return Response(status=201)
 
 
+async def _startup(app: web.Application) -> None:
+    """Connect shared infrastructure services when the web app starts."""
+    redis_service.connect()
+
+
+async def _cleanup(app: web.Application) -> None:
+    """Close shared infrastructure services during web app shutdown."""
+    redis_service.disconnect()
+
+
 def create_app() -> web.Application:
     """Build the aiohttp application with the messaging route.
 
@@ -85,6 +96,8 @@ def create_app() -> web.Application:
     """
     app = web.Application(middlewares=[aiohttp_error_middleware])
     app.router.add_post("/api/messages", messages)
+    app.on_startup.append(_startup)
+    app.on_cleanup.append(_cleanup)
     return app
 
 

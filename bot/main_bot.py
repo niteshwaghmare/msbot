@@ -13,7 +13,7 @@ from botbuilder.core import ActivityHandler, TurnContext
 from botbuilder.schema import ChannelAccount
 
 from flows.router import CardRouter
-from utils.logging import activity_log_details, get_logger
+from core.logging import activity_log_details, get_logger
 
 
 LOGGER = get_logger(__name__)

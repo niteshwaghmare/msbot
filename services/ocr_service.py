@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from core.base_operations import BaseOperation
-from utils.logging import get_logger
+from core.logging import get_logger
 
 LOGGER = get_logger(__name__)
 

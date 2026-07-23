@@ -10,7 +10,7 @@ from core.operation_factory import OperationFactory
 from models.country import WorkflowStep
 from models.progress import ProgressState
 from services.progress_service import ProgressService
-from utils.logging import get_logger
+from core.logging import get_logger
 
 LOGGER = get_logger(__name__)
 UpdateCallback = Callable[[ProgressState], Awaitable[None]]
